@@ -31,35 +31,18 @@ const memoryToolSchemaData: FunctionDeclaration = {
     properties: {
       fact: {
         type: 'string',
-        description: 'The specific fact or piece of information to remember. Should be a clear, self-contained statement.',
+        description:
+          'The specific fact or piece of information to remember. Should be a clear, self-contained statement.',
       },
-      memoryStorage: {
+      scope: {
         type: 'string',
-        description: 'Where to save the memory: "project" saves to current project\'s QWEN.md (project-specific), "global" saves to user-level ~/.qwen/QWEN.md (shared across all projects). If not specified, will use the default value from configuration or global.',
-        enum: ['project', 'global'],
+        description:
+          'Where to save the memory: "global" saves to user-level ~/.qwen/QWEN.md (shared across all projects), "project" saves to current project\'s QWEN.md (project-specific). If not specified, will prompt user to choose.',
+        enum: ['global', 'project'],
       },
     },
     required: ['fact'],
   },
-}
-
-// Read configuration from .qwen/settings.json
-async function loadMemoryStorageConfig(): Promise<string> {
-  try {
-    const configPath = path.join(process.cwd(), '.qwen', 'settings.json');
-    const configContent = await fs.readFile(configPath, 'utf-8');
-    const config = JSON.parse(configContent);
-    
-    if (config.memoryStorage && (config.memoryStorage === 'project' || config.memoryStorage === 'global')) {
-      return config.memoryStorage;
-    }
-    
-    return 'global'; // Default to global if not specified
-  } catch (_err) {
-    const configPath = path.join(process.cwd(), '.qwen', 'settings.json');
-    console.warn(`Could not read memoryStorage configuration from ${configPath}. Using default value 'global'.`);
-    return 'global';
-  }
 };
 
 const memoryToolDescription = `
@@ -79,10 +62,10 @@ Do NOT use this tool:
 ## Parameters
 
 - \`fact\` (string, required): The specific fact or piece of information to remember. This should be a clear, self-contained statement. For example, if the user says "My favorite color is blue", the fact would be "My favorite color is blue".
-- \`memoryStorage\` (string, optional): Where to save the memory:
+- \`scope\` (string, optional): Where to save the memory:
   - "global": Saves to user-level ~/.qwen/QWEN.md (shared across all projects)
   - "project": Saves to current project's QWEN.md (project-specific)
-  - If not specified, will use configuration file setting or default to global.
+  - If not specified, the tool will ask the user where they want to save the memory.
 `;
 
 export const GEMINI_CONFIG_DIR = '.qwen';
@@ -121,7 +104,7 @@ interface SaveMemoryParams {
   fact: string;
   modified_by_user?: boolean;
   modified_content?: string;
-  memoryStorage?: 'global' | 'project';
+  scope?: 'global' | 'project';
 }
 
 function getGlobalMemoryFilePath(): string {
@@ -154,10 +137,10 @@ function ensureNewlineSeparation(currentContent: string): string {
  * Reads the current content of the memory file
  */
 async function readMemoryFileContent(
-  memoryStorage: 'global' | 'project' = 'global',
+  scope: 'global' | 'project' = 'global',
 ): Promise<string> {
   try {
-    return await fs.readFile(getMemoryFilePath(memoryStorage), 'utf-8');
+    return await fs.readFile(getMemoryFilePath(scope), 'utf-8');
   } catch (err) {
     const error = err as Error & { code?: string };
     if (!(error instanceof Error) || error.code !== 'ENOENT') throw err;
@@ -216,46 +199,77 @@ class MemoryToolInvocation extends BaseToolInvocation<
   private static readonly allowlist: Set<string> = new Set();
 
   getDescription(): string {
-    const memoryStorage = this.params.memoryStorage || 'global';
-    const memoryFilePath = getMemoryFilePath(memoryStorage);
-    return `${tildeifyPath(memoryFilePath)} (${memoryStorage})`;
+    if (!this.params.scope) {
+      const globalPath = tildeifyPath(getMemoryFilePath('global'));
+      const projectPath = tildeifyPath(getMemoryFilePath('project'));
+      return `CHOOSE: ${globalPath} (global) OR ${projectPath} (project)`;
+    }
+    const scope = this.params.scope;
+    const memoryFilePath = getMemoryFilePath(scope);
+    return `${tildeifyPath(memoryFilePath)} (${scope})`;
   }
 
   override async shouldConfirmExecute(
     _abortSignal: AbortSignal,
   ): Promise<ToolEditConfirmationDetails | false> {
-    // If memoryStorage is not specified, prompt the user to choose
-    if (!this.params.memoryStorage) {
+    // When scope is not specified, show a choice dialog defaulting to global
+    if (!this.params.scope) {
+      // Show preview of what would be added to global by default
+      const defaultScope = 'global';
+      const currentContent = await readMemoryFileContent(defaultScope);
+      const newContent = computeNewContent(currentContent, this.params.fact);
+
       const globalPath = tildeifyPath(getMemoryFilePath('global'));
       const projectPath = tildeifyPath(getMemoryFilePath('project'));
 
+      const fileName = path.basename(getMemoryFilePath(defaultScope));
+      const choiceText = `Choose where to save this memory:
+
+"${this.params.fact}"
+
+Options:
+- Global: ${globalPath} (shared across all projects)
+- Project: ${projectPath} (current project only)
+
+Preview of changes to be made to GLOBAL memory:
+`;
+      const fileDiff =
+        choiceText +
+        Diff.createPatch(
+          fileName,
+          currentContent,
+          newContent,
+          'Current',
+          'Proposed (Global)',
+          DEFAULT_DIFF_OPTIONS,
+        );
+
       const confirmationDetails: ToolEditConfirmationDetails = {
         type: 'edit',
-        title: `Choose Memory Storage Location`,
-        fileName: 'Memory Storage Options',
-        filePath: '',
-        fileDiff: `Choose where to save this memory:
-
-"${this.params.fact}"\n\nOptions:\n- Global: ${globalPath} (shared across all projects)\n- Project: ${projectPath} (current project only)\n\nPlease specify the memoryStorage parameter: "project" or "global"`,
-        originalContent: '',
-        newContent: `Memory to save: ${this.params.fact}\n\nMemory storage options:\n- global: ${globalPath}\n- project: ${projectPath}`,
+        title: `Choose Memory Location: GLOBAL (${globalPath}) or PROJECT (${projectPath})`,
+        fileName,
+        filePath: getMemoryFilePath(defaultScope),
+        fileDiff,
+        originalContent: `scope: global\n\n# INSTRUCTIONS:\n# - Click "Yes" to save to GLOBAL memory: ${globalPath}\n# - Click "Modify with external editor" and change "global" to "project" to save to PROJECT memory: ${projectPath}\n\n${currentContent}`,
+        newContent: `scope: global\n\n# INSTRUCTIONS:\n# - Click "Yes" to save to GLOBAL memory: ${globalPath}\n# - Click "Modify with external editor" and change "global" to "project" to save to PROJECT memory: ${projectPath}\n\n${newContent}`,
         onConfirm: async (_outcome: ToolConfirmationOutcome) => {
-          // This will be handled by the execution flow
+          // Will be handled in createUpdatedParams
         },
       };
       return confirmationDetails;
     }
 
-    const memoryStorage = this.params.memoryStorage;
-    const memoryFilePath = getMemoryFilePath(memoryStorage);
-    const allowlistKey = `${memoryFilePath}_${memoryStorage}`;
+    // Only check allowlist when scope is specified
+    const scope = this.params.scope;
+    const memoryFilePath = getMemoryFilePath(scope);
+    const allowlistKey = `${memoryFilePath}_${scope}`;
 
     if (MemoryToolInvocation.allowlist.has(allowlistKey)) {
       return false;
     }
 
     // Read current content of the memory file
-    const currentContent = await readMemoryFileContent(memoryStorage);
+    const currentContent = await readMemoryFileContent(scope);
 
     // Calculate the new content that will be written to the memory file
     const newContent = computeNewContent(currentContent, this.params.fact);
@@ -272,7 +286,7 @@ class MemoryToolInvocation extends BaseToolInvocation<
 
     const confirmationDetails: ToolEditConfirmationDetails = {
       type: 'edit',
-      title: `Confirm Memory Save: ${tildeifyPath(memoryFilePath)} (${memoryStorage})`,
+      title: `Confirm Memory Save: ${tildeifyPath(memoryFilePath)} (${scope})`,
       fileName: memoryFilePath,
       filePath: memoryFilePath,
       fileDiff,
@@ -298,14 +312,26 @@ class MemoryToolInvocation extends BaseToolInvocation<
       };
     }
 
-    // If memoryStorage is not specified, load from config or use default
-    if (!this.params.memoryStorage) {
-      // This shouldn't happen as we have loadMemoryStorageConfig() fallback below
-      // But keeping this as a safety check
+    // If scope is not specified and user didn't modify content, return error prompting for choice
+    if (!this.params.scope && !modified_by_user) {
+      const globalPath = tildeifyPath(getMemoryFilePath('global'));
+      const projectPath = tildeifyPath(getMemoryFilePath('project'));
+      const errorMessage = `Please specify where to save this memory:
+
+Global: ${globalPath} (shared across all projects)
+Project: ${projectPath} (current project only)`;
+
+      return {
+        llmContent: JSON.stringify({
+          success: false,
+          error: 'Please specify where to save this memory',
+        }),
+        returnDisplay: errorMessage,
+      };
     }
 
-    const memoryStorage = this.params.memoryStorage || (await loadMemoryStorageConfig()) as 'global' | 'project';
-    const memoryFilePath = getMemoryFilePath(memoryStorage);
+    const scope = this.params.scope || 'global';
+    const memoryFilePath = getMemoryFilePath(scope);
 
     try {
       if (modified_by_user && modified_content !== undefined) {
@@ -314,7 +340,7 @@ class MemoryToolInvocation extends BaseToolInvocation<
           recursive: true,
         });
         await fs.writeFile(memoryFilePath, modified_content, 'utf-8');
-        const successMessage = `Okay, I've updated the ${memoryStorage} memory file with your modifications.`;
+        const successMessage = `Okay, I've updated the ${scope} memory file with your modifications.`;
         return {
           llmContent: JSON.stringify({
             success: true,
@@ -329,7 +355,7 @@ class MemoryToolInvocation extends BaseToolInvocation<
           writeFile: fs.writeFile,
           mkdir: fs.mkdir,
         });
-        const successMessage = `Okay, I've remembered that in ${memoryStorage} memory: "${fact}"`;
+        const successMessage = `Okay, I've remembered that in ${scope} memory: "${fact}"`;
         return {
           llmContent: JSON.stringify({
             success: true,
@@ -342,7 +368,7 @@ class MemoryToolInvocation extends BaseToolInvocation<
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       console.error(
-        `[MemoryTool] Error executing save_memory for fact "${fact}" in ${memoryStorage}: ${errorMessage}`,
+        `[MemoryTool] Error executing save_memory for fact "${fact}" in ${scope}: ${errorMessage}`,
       );
       return {
         llmContent: JSON.stringify({
@@ -462,24 +488,88 @@ export class MemoryTool
 
   getModifyContext(_abortSignal: AbortSignal): ModifyContext<SaveMemoryParams> {
     return {
-      getFilePath: (params: SaveMemoryParams) =>
-        getMemoryFilePath(params.memoryStorage || 'global'),
-      getCurrentContent: async (params: SaveMemoryParams): Promise<string> =>
-        readMemoryFileContent(params.memoryStorage || 'global'),
+      getFilePath: (params: SaveMemoryParams) => {
+        // Determine scope from modified content or default
+        let scope = params.scope || 'global';
+        if (params.modified_content) {
+          const scopeMatch = params.modified_content.match(
+            /^scope:\s*(global|project)\s*\n/i,
+          );
+          if (scopeMatch) {
+            scope = scopeMatch[1].toLowerCase() as 'global' | 'project';
+          }
+        }
+        return getMemoryFilePath(scope);
+      },
+      getCurrentContent: async (params: SaveMemoryParams): Promise<string> => {
+        // Check if content starts with scope directive
+        if (params.modified_content) {
+          const scopeMatch = params.modified_content.match(
+            /^scope:\s*(global|project)\s*\n/i,
+          );
+          if (scopeMatch) {
+            const scope = scopeMatch[1].toLowerCase() as 'global' | 'project';
+            const content = await readMemoryFileContent(scope);
+            const globalPath = tildeifyPath(getMemoryFilePath('global'));
+            const projectPath = tildeifyPath(getMemoryFilePath('project'));
+            return `scope: ${scope}\n\n# INSTRUCTIONS:\n# - Save as "global" for GLOBAL memory: ${globalPath}\n# - Save as "project" for PROJECT memory: ${projectPath}\n\n${content}`;
+          }
+        }
+        const scope = params.scope || 'global';
+        const content = await readMemoryFileContent(scope);
+        const globalPath = tildeifyPath(getMemoryFilePath('global'));
+        const projectPath = tildeifyPath(getMemoryFilePath('project'));
+        return `scope: ${scope}\n\n# INSTRUCTIONS:\n# - Save as "global" for GLOBAL memory: ${globalPath}\n# - Save as "project" for PROJECT memory: ${projectPath}\n\n${content}`;
+      },
       getProposedContent: async (params: SaveMemoryParams): Promise<string> => {
-        const memoryStorage = params.memoryStorage || 'global';
-        const currentContent = await readMemoryFileContent(memoryStorage);
-        return computeNewContent(currentContent, params.fact);
+        let scope = params.scope || 'global';
+
+        // Check if modified content has scope directive
+        if (params.modified_content) {
+          const scopeMatch = params.modified_content.match(
+            /^scope:\s*(global|project)\s*\n/i,
+          );
+          if (scopeMatch) {
+            scope = scopeMatch[1].toLowerCase() as 'global' | 'project';
+          }
+        }
+
+        const currentContent = await readMemoryFileContent(scope);
+        const newContent = computeNewContent(currentContent, params.fact);
+        const globalPath = tildeifyPath(getMemoryFilePath('global'));
+        const projectPath = tildeifyPath(getMemoryFilePath('project'));
+        return `scope: ${scope}\n\n# INSTRUCTIONS:\n# - Save as "global" for GLOBAL memory: ${globalPath}\n# - Save as "project" for PROJECT memory: ${projectPath}\n\n${newContent}`;
       },
       createUpdatedParams: (
         _oldContent: string,
         modifiedProposedContent: string,
         originalParams: SaveMemoryParams,
-      ): SaveMemoryParams => ({
-        ...originalParams,
-        modified_by_user: true,
-        modified_content: modifiedProposedContent,
-      }),
+      ): SaveMemoryParams => {
+        // Parse user's scope choice from modified content
+        const scopeMatch = modifiedProposedContent.match(
+          /^scope:\s*(global|project)/i,
+        );
+        const scope = scopeMatch
+          ? (scopeMatch[1].toLowerCase() as 'global' | 'project')
+          : 'global';
+
+        // Strip out the scope directive and instruction lines, keep only the actual memory content
+        const contentWithoutScope = modifiedProposedContent.replace(
+          /^scope:\s*(global|project)\s*\n/,
+          '',
+        );
+        const actualContent = contentWithoutScope
+          .replace(/^#[^\n]*\n/gm, '')
+          .replace(/^\s*\n/gm, '')
+          .trim();
+
+        return {
+          ...originalParams,
+          scope,
+          modified_by_user: true,
+          modified_content: actualContent,
+        };
+      },
     };
   }
 }
