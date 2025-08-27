@@ -1,11 +1,41 @@
 {
   "tasks": [
     {
-      "id": "1756214069474",
-      "name": "Run preflight checks and verify changes",
+      "id": "1756302628645l93veoolo",
+      "name": "Task Alpha",
+      "status": "in_progress",
+      "created": "2025-08-27T13:50:28.645Z",
+      "updated": "2025-08-27T13:50:28.647Z"
+    },
+    {
+      "id": "1756302628646l3zsehgeu",
+      "name": "Task Beta",
+      "status": "complete",
+      "created": "2025-08-27T13:50:28.646Z",
+      "updated": "2025-08-27T13:50:28.648Z"
+    },
+    {
+      "id": "17563026286464jfjbh1yf",
+      "name": "Task Gamma",
+      "status": "in_progress",
+      "created": "2025-08-27T13:50:28.646Z",
+      "updated": "2025-08-27T13:50:28.648Z"
+    },
+    {
+      "id": "1756302628649syv3vpd2y",
+      "name": "Batch Task 1",
+      "status": "complete",
+      "context": "From batch operation",
+      "created": "2025-08-27T13:50:28.649Z",
+      "updated": "2025-08-27T13:50:28.649Z"
+    },
+    {
+      "id": "1756302628649tfoi0gix1",
+      "name": "Batch Task 2",
       "status": "pending",
-      "created": "2025-08-26T13:14:29.474Z",
-      "updated": "2025-08-26T13:14:29.474Z"
+      "context": "From batch operation",
+      "created": "2025-08-27T13:50:28.649Z",
+      "updated": "2025-08-27T13:50:28.649Z"
     }
   ]
 }
