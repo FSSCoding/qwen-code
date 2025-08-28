@@ -36,6 +36,7 @@ import { WebscraperTool } from '../tools/webscraperTool.js';
 import { Flake8Tool } from '../tools/flake8Tool.js';
 import { BlackTool } from '../tools/blackTool.js';
 import { ProjectStructureTool } from '../tools/projectStructureTool.js';
+import { ModelSwitcherTool } from '../tools/modelSwitcherWorking.js';
 import { GeminiClient } from '../core/client.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
 import { GitService } from '../services/gitService.js';
@@ -886,6 +887,8 @@ export class Config {
     registerCoreTool(BlackTool);
     // Register IDE-like project analysis tools
     registerCoreTool(ProjectStructureTool);
+    // Register lightning-fast model switching system
+    registerCoreTool(ModelSwitcherTool);
     // Conditionally register web search tool only if Tavily API key is set
     if (this.getTavilyApiKey()) {
       registerCoreTool(WebSearchTool, this);
