@@ -17,14 +17,14 @@ import * as path from 'path';
 const taskToolSchemaData: FunctionDeclaration = {
   name: 'qwen_tasks',
   description:
-    'Manage task lists efficiently. Visual indicators: ● complete, 🟡 active, ○ pending. Always show task list after modifications for immediate visual feedback.',
+    'Manage task lists efficiently. Visual indicators: ● complete, 🟡 active, ○ pending. Always show task list after modifications for immediate visual feedback. Limits: max 100 total tasks, max 25 per batch operation.',
   parametersJsonSchema: {
     type: 'object',
     properties: {
       action: {
         type: 'string',
         description: 'Action to perform',
-        enum: ['add', 'complete', 'in_progress', 'list', 'show_progress', 'remove', 'batch_add', 'batch_update'],
+        enum: ['add', 'complete', 'in_progress', 'list', 'show_progress', 'remove', 'clear_all', 'batch_add', 'batch_remove', 'batch_update'],
       },
       task_name: {
         type: 'string',
@@ -36,7 +36,7 @@ const taskToolSchemaData: FunctionDeclaration = {
       },
       tasks: {
         type: 'array',
-        description: 'Array of tasks for batch operations (required for batch_add, batch_update)',
+        description: 'Array of tasks for batch operations (required for batch_add, batch_remove, batch_update)',
         items: {
           type: 'object',
           properties: {
@@ -62,16 +62,22 @@ Single Actions:
 - list: Show all tasks with their status
 - show_progress: Display completion percentage
 - remove: Remove a task from the list
+- clear_all: Remove all tasks from the list
 
 Batch Actions:
 - batch_add: Add multiple tasks in a single operation (prevents race conditions)
+- batch_remove: Remove multiple specific tasks in a single operation
 - batch_update: Update multiple tasks in a single operation
 
 The system automatically persists state to tasks.json with atomic writes to prevent corruption.
+
+Limits:
+- Maximum 100 total tasks in the task list
+- Maximum 25 tasks per batch operation
 `;
 
 interface TaskToolParams {
-  action: 'add' | 'complete' | 'in_progress' | 'list' | 'show_progress' | 'remove' | 'batch_add' | 'batch_update';
+  action: 'add' | 'complete' | 'in_progress' | 'list' | 'show_progress' | 'remove' | 'clear_all' | 'batch_add' | 'batch_remove' | 'batch_update';
   task_name?: string;
   context?: string;
   tasks?: Array<{
@@ -115,8 +121,12 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
         return 'Show progress summary';
       case 'remove':
         return `Remove task: "${task_name}"`;
+      case 'clear_all':
+        return 'Clear all tasks from list';
       case 'batch_add':
         return `Batch add ${this.params.tasks?.length || 0} tasks`;
+      case 'batch_remove':
+        return `Batch remove ${this.params.tasks?.length || 0} tasks`;
       case 'batch_update':
         return `Batch update ${this.params.tasks?.length || 0} tasks`;
       default:
@@ -142,6 +152,16 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
                 error: 'task_name is required for add action',
               }),
               returnDisplay: '❌ Error: task_name is required for add action',
+            };
+          }
+
+          if (taskList.tasks.length >= 100) {
+            return {
+              llmContent: JSON.stringify({
+                success: false,
+                error: `Task list limited to 100 total tasks (currently ${taskList.tasks.length})`,
+              }),
+              returnDisplay: `❌ Task list limited to 100 total tasks (currently ${taskList.tasks.length})`,
             };
           }
           
@@ -207,8 +227,18 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
           taskToComplete.updated = now;
           await this.saveTaskList(tasksPath, taskList);
           
-          // Auto-display updated task list
-          const completedTaskDisplay = this.formatTaskList(taskList);
+          // Check if all tasks are now completed
+          const allComplete = this.checkAllTasksComplete(taskList);
+          let displayMessage = `Completed: ${taskToComplete.name}\n\n`;
+          
+          if (allComplete) {
+            // Show completion summary instead of regular task list
+            displayMessage += this.formatCompletionSummary(taskList);
+          } else {
+            // Show regular updated task list
+            const completedTaskDisplay = this.formatTaskList(taskList);
+            displayMessage += completedTaskDisplay;
+          }
           
           return {
             llmContent: JSON.stringify({
@@ -216,8 +246,9 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
               action: 'complete',
               task: taskToComplete,
               taskList: taskList,
+              allTasksComplete: allComplete,
             }),
-            returnDisplay: `Completed: ${taskToComplete.name}\n\n${completedTaskDisplay}`,
+            returnDisplay: displayMessage,
           };
 
         case 'in_progress':
@@ -300,6 +331,7 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
           await this.saveTaskList(tasksPath, taskList);
           
           // Auto-display task list after removing
+          const removeTaskDisplay = this.formatTaskList(taskList);
           
           return {
             llmContent: JSON.stringify({
@@ -308,7 +340,22 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
               task: removedTask,
               taskList: taskList,
             }),
-            returnDisplay: `Removed: ${removedTask.name}`,
+            returnDisplay: `Removed: ${removedTask.name}\n\n${removeTaskDisplay}`,
+          };
+
+        case 'clear_all':
+          const clearedCount = taskList.tasks.length;
+          taskList.tasks = [];
+          await this.saveTaskList(tasksPath, taskList);
+          
+          return {
+            llmContent: JSON.stringify({
+              success: true,
+              action: 'clear_all',
+              clearedCount,
+              taskList: taskList,
+            }),
+            returnDisplay: `Cleared all tasks (${clearedCount} tasks removed)\n\n📋 No tasks yet`,
           };
 
         case 'list':
@@ -377,6 +424,26 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
             };
           }
 
+          if (this.params.tasks.length > 25) {
+            return {
+              llmContent: JSON.stringify({
+                success: false,
+                error: `Batch operations limited to 25 tasks (you provided ${this.params.tasks.length})`,
+              }),
+              returnDisplay: `❌ Batch operations limited to 25 tasks (you provided ${this.params.tasks.length})`,
+            };
+          }
+
+          if (taskList.tasks.length + this.params.tasks.length > 100) {
+            return {
+              llmContent: JSON.stringify({
+                success: false,
+                error: `Task list limited to 100 total tasks (currently ${taskList.tasks.length}, trying to add ${this.params.tasks.length})`,
+              }),
+              returnDisplay: `❌ Task list limited to 100 total tasks (currently ${taskList.tasks.length}, trying to add ${this.params.tasks.length})`,
+            };
+          }
+
           let addedCount = 0;
           for (const taskInfo of this.params.tasks) {
             const newTask: Task = {
@@ -406,6 +473,59 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
             returnDisplay: `Added ${addedCount} tasks\n\n${batchAddDisplay}`,
           };
 
+        case 'batch_remove':
+          if (!this.params.tasks || this.params.tasks.length === 0) {
+            return {
+              llmContent: JSON.stringify({
+                success: false,
+                error: 'tasks array is required for batch_remove action',
+              }),
+              returnDisplay: '❌ Error: tasks array is required for batch_remove action',
+            };
+          }
+
+          if (this.params.tasks.length > 25) {
+            return {
+              llmContent: JSON.stringify({
+                success: false,
+                error: `Batch operations limited to 25 tasks (you provided ${this.params.tasks.length})`,
+              }),
+              returnDisplay: `❌ Batch operations limited to 25 tasks (you provided ${this.params.tasks.length})`,
+            };
+          }
+
+          let removedCount = 0;
+          const removedTasks: Task[] = [];
+          
+          // Remove tasks in reverse order to maintain indices
+          for (const taskInfo of this.params.tasks) {
+            const taskIndex = taskList.tasks.findIndex(t => 
+              t.name.toLowerCase().includes(taskInfo.name.toLowerCase())
+            );
+            
+            if (taskIndex !== -1) {
+              const removedTask = taskList.tasks.splice(taskIndex, 1)[0];
+              removedTasks.push(removedTask);
+              removedCount++;
+            }
+          }
+
+          await this.saveTaskList(tasksPath, taskList);
+
+          // Auto-display updated task list
+          const batchRemoveDisplay = this.formatTaskList(taskList);
+          
+          return {
+            llmContent: JSON.stringify({
+              success: true,
+              action: 'batch_remove',
+              removedCount,
+              removedTasks,
+              taskList: taskList,
+            }),
+            returnDisplay: `Removed ${removedCount} tasks\n\n${batchRemoveDisplay}`,
+          };
+
         case 'batch_update':
           if (!this.params.tasks || this.params.tasks.length === 0) {
             return {
@@ -414,6 +534,16 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
                 error: 'tasks array is required for batch_update action',
               }),
               returnDisplay: '❌ Error: tasks array is required for batch_update action',
+            };
+          }
+
+          if (this.params.tasks.length > 25) {
+            return {
+              llmContent: JSON.stringify({
+                success: false,
+                error: `Batch operations limited to 25 tasks (you provided ${this.params.tasks.length})`,
+              }),
+              returnDisplay: `❌ Batch operations limited to 25 tasks (you provided ${this.params.tasks.length})`,
             };
           }
 
@@ -601,6 +731,28 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
     });
     
     return output.trim();
+  }
+
+  private checkAllTasksComplete(taskList: TaskList): boolean {
+    return taskList.tasks.length > 0 && taskList.tasks.every(task => task.status === 'complete');
+  }
+
+  private formatCompletionSummary(taskList: TaskList): string {
+    const totalTasks = taskList.tasks.length;
+    const completedTasks = taskList.tasks.filter(t => t.status === 'complete');
+    
+    let summary = `🎉 **All Tasks Completed!** 🎉\n\n`;
+    summary += `📊 Summary: ${totalTasks} tasks completed\n\n`;
+    summary += `**Completed Tasks:**\n`;
+    
+    completedTasks.forEach((task, index) => {
+      summary += `✅ ${task.name}\n`;
+    });
+    
+    summary += `\n🧹 **Tip:** Use the 'clear_all' action to reset your task list for the next session!\n`;
+    summary += `Example: {\"action\": \"clear_all\"}`;
+    
+    return summary;
   }
 }
 
