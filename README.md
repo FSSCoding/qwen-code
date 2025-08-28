@@ -65,6 +65,34 @@ Development efficiency comes from removing friction and automating routine tasks
 - **Workflow Automation**: Reduce repetitive tasks that interrupt creative problem-solving
 - **Error Prevention**: Catch common mistakes before they become bugs or deployment issues
 
+## 🖥️ **Local Model Recommendations**
+
+Running Qwen Code locally provides complete privacy and control over your development workflow. Based on extensive testing, these model configurations deliver excellent performance:
+
+### ⚡ **High-Speed Development** - `qwen/qwen3-4b-2507`
+- **Performance**: 120+ tokens/second on dual RTX 3090 setup
+- **Context Window**: 190k tokens with KV quantization + Flash Attention enabled
+- **Best for**: Code completion, simple refactoring, documentation, basic analysis
+- **Experience**: Comparable to Gemini Flash in Gemini CLI - fast, responsive, and highly effective for routine development tasks
+- **Why it works**: The enhanced system prompts and instructions make this lightweight model punch well above its weight class
+
+### 🧠 **Complex Problem Solving** - `qwen/qwen3-30b-a3b-2507`  
+- **Performance**: Slower but significantly more capable reasoning
+- **Context Window**: 131k tokens with KV quantization + Flash Attention enabled
+- **Best for**: Architecture decisions, complex refactoring, debugging challenging issues, system design
+- **When to use**: Multi-step problems requiring deep analysis and planning
+- **Note**: While thinking modes can help, the raw capability often delivers results faster than waiting for step-by-Step reasoning
+
+### ⚙️ **Configuration Notes**
+- **KV Quantization**: Enables massive context windows but may cause tool repetition loops - disable if you encounter this issue
+- **Without KV Quant**: Context window reduces to ~96k tokens but eliminates repetition issues and reduces VRAM consumption
+- **Flash Attention**: Essential for handling large context windows efficiently
+
+### 💡 **Usage Strategy**
+Start with the 4B model for immediate feedback and rapid iteration. Switch to the 30B model when you encounter problems that require deeper reasoning or when the 4B model's suggestions need more sophistication. The speed difference makes this workflow practical - use fast local inference for the majority of tasks, reserving the larger model for complex challenges.
+
+This local setup eliminates API costs and latency while maintaining professional-grade AI assistance throughout your development workflow.
+
 ---
 
 # Qwen Code
