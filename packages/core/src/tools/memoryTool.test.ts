@@ -313,7 +313,7 @@ describe('MemoryTool', () => {
       vi.mocked(fs.readFile).mockResolvedValue('');
 
       // Clear allowlist before each test to ensure clean state
-      const invocation = memoryTool.build({ fact: 'test', memoryStorage: 'global' });
+      const invocation = memoryTool.build({ fact: 'test' });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (invocation.constructor as any).allowlist.clear();
     });

@@ -33,6 +33,9 @@ import { RAGIndexTool } from '../tools/ragIndexTool.js';
 import { TTSTool } from '../tools/ttsTool.js';
 import { TaskTool } from '../tools/taskTool.js';
 import { WebscraperTool } from '../tools/webscraperTool.js';
+import { Flake8Tool } from '../tools/flake8Tool.js';
+import { BlackTool } from '../tools/blackTool.js';
+import { ProjectStructureTool } from '../tools/projectStructureTool.js';
 import { GeminiClient } from '../core/client.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
 import { GitService } from '../services/gitService.js';
@@ -878,6 +881,11 @@ export class Config {
     registerCoreTool(TTSTool);
     registerCoreTool(TaskTool);
     registerCoreTool(WebscraperTool);
+    // Register Python development tools for linting and formatting
+    registerCoreTool(Flake8Tool);
+    registerCoreTool(BlackTool);
+    // Register IDE-like project analysis tools
+    registerCoreTool(ProjectStructureTool);
     // Conditionally register web search tool only if Tavily API key is set
     if (this.getTavilyApiKey()) {
       registerCoreTool(WebSearchTool, this);
