@@ -1,3 +1,58 @@
+# FSS Enhanced Qwen Code Fork 🚀
+
+<div align="center">
+
+[![FSS Enhanced](https://img.shields.io/badge/FSS-Enhanced-blue.svg)](https://github.com/FSSCoding/qwen-code)
+[![Python Tools](https://img.shields.io/badge/Python-Tools-green.svg)](https://github.com/FSSCoding/qwen-code)
+[![RAG Integration](https://img.shields.io/badge/RAG-Integrated-purple.svg)](https://github.com/FSSCoding/qwen-code)
+[![Voice Feedback](https://img.shields.io/badge/Voice-Enabled-orange.svg)](https://github.com/FSSCoding/qwen-code)
+
+</div>
+
+## 🎯 Enhanced Features & Tools
+
+This fork extends the standard Qwen Code with professional development tools and intelligent workflow automation:
+
+### 🐍 **Python Development Suite**
+- **Flake8 Integration**: Automated PEP 8 linting with configurable rules and auto-fix suggestions
+- **Black Formatter**: Professional Python code formatting with preview mode and safety checks
+- **Intelligent Linting**: Runs automatically after code edits to maintain code quality
+
+### 🏗️ **Project Intelligence Tools**
+- **Project Structure Analyzer**: IDE-level project analysis with multiple visualization modes:
+  - `tree`: Visual directory structure
+  - `overview`: High-level project summary  
+  - `architecture`: Design pattern recognition
+  - `metrics`: Code statistics and health metrics
+  - `dependencies`: Dependency analysis and recommendations
+
+### 🧠 **RAG-Enhanced Code Analysis**
+- **Deep Semantic Search**: Advanced RAG system with AST mapping for intelligent code discovery
+- **Cross-Reference Analysis**: Find related code patterns and architectural relationships
+- **Context-Aware Suggestions**: Leverage project-wide understanding for better recommendations
+
+### 🎵 **Voice Feedback System**
+- **TTS Integration**: Real-time voice progress updates during long operations
+- **Multi-Voice Support**: Different voices for different types of work (Bella, Emma, George, Lewis, Sarah, Michael)
+- **Bluetooth Audio**: Seamless integration with wireless speakers for hands-free development
+
+### 📋 **Enhanced Task Management**
+- **Persistent Task Lists**: Comprehensive task tracking with status management
+- **Visual Progress Indicators**: Color-coded task states and progress visualization
+- **Intelligent Task Breakdown**: Automatic decomposition of complex tasks into manageable steps
+
+### 🔍 **Advanced Search & Navigation**
+- **Web Research Tools**: Integrated web scraping and research capabilities
+- **Memory System**: Project-specific context and knowledge retention
+- **Enhanced File Operations**: Intelligent file management with pattern recognition
+
+### 🛠️ **Developer Experience Enhancements**
+- **IDE-Level Capabilities**: Professional development tools typically found in advanced IDEs
+- **Workflow Automation**: Streamlined development processes with intelligent assistance
+- **Error Prevention**: Proactive code quality checks and safety measures
+
+---
+
 # Qwen Code
 
 <div align="center">
