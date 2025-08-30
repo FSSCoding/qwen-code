@@ -50,3 +50,6 @@ test-results/
 api-keys.json
 keys.json
 provider-keys.json
+
+# Private documentation - not for GitHub
+Brett-Custom-Notes/
