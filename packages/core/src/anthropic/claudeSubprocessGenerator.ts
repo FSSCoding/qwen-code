@@ -96,7 +96,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
     request: GenerateContentParameters,
     userPromptId: string
   ): Promise<GenerateContentResponse> {
-    console.log('🔍 ClaudeSubprocessGenerator.generateContent called');
+    
     
     try {
       // Pre-flight check: ensure Claude CLI is still working
@@ -143,7 +143,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
     request: GenerateContentParameters,
     userPromptId: string
   ): Promise<AsyncGenerator<GenerateContentResponse>> {
-    console.log('🔍 ClaudeSubprocessGenerator.generateContentStream called');
+    
     
     try {
       // Pre-flight check: ensure Claude CLI is still working
@@ -221,7 +221,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
    */
   private extractModelFromRequest(request: GenerateContentParameters): string {
     if (request.model) {
-      console.log(`🔍 extractModelFromRequest: request.model="${request.model}"`);
+      
       
       // Map full model names to Claude CLI aliases
       const modelMappings: Record<string, string> = {
@@ -233,16 +233,16 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
       
       // CRITICAL FIX: If non-Claude model is requested, use default Claude model instead
       if (request.model.includes('gemini') || request.model.includes('gpt') || request.model.includes('qwen')) {
-        console.log(`⚠️  Non-Claude model "${request.model}" requested, using default: ${this.defaultModel}`);
+        // Non-Claude model requested, using default Claude model
         return this.defaultModel;
       }
       
       const mappedModel = modelMappings[request.model] || request.model;
-      console.log(`🎯 Model mapping: "${request.model}" -> "${mappedModel}"`);
+      // Model mapping applied
       return mappedModel;
     }
     
-    console.log(`🎯 No model in request, using default: ${this.defaultModel}`);
+    // Using default model
     return this.defaultModel;
   }
 
@@ -420,7 +420,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
                 return;
               } else if (streamChunk.type === 'system' && streamChunk.subtype === 'init') {
                 // Initialization message - continue
-                console.log('📡 Claude CLI initialized, session_id:', streamChunk.session_id);
+                // Claude CLI initialized
               }
             } catch (parseError) {
               console.warn('⚠️ Failed to parse streaming chunk, continuing...', {
@@ -485,7 +485,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
           parts: [{ text: content }],
           role: 'model'
         },
-        finishReason: FinishReason.OTHER, // Still streaming
+        finishReason: FinishReason.FINISH_REASON_UNSPECIFIED, // Still streaming
         index: 0,
         safetyRatings: []
       }]
@@ -502,7 +502,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
           parts: [{ text: `Error: ${errorMessage}\n\nPlease check your Claude CLI installation and authentication.` }],
           role: 'model'
         },
-        finishReason: FinishReason.OTHER,
+        finishReason: FinishReason.STOP,
         index: 0,
         safetyRatings: []
       }]

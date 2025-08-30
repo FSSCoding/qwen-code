@@ -26,7 +26,7 @@ export function createShowMemoryAction(
     const debugMode = config.getDebugMode();
 
     if (debugMode) {
-      console.log('[DEBUG] Show Memory command invoked.');
+      
     }
 
     const currentMemory = config.getUserMemory();
@@ -40,7 +40,7 @@ export function createShowMemoryAction(
       console.log(
         `[DEBUG] Showing memory. Content from config.getUserMemory() (first 200 chars): ${currentMemory.substring(0, 200)}...`,
       );
-      console.log(`[DEBUG] Number of context files loaded: ${fileCount}`);
+      
     }
 
     if (fileCount > 0) {

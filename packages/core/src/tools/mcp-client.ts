@@ -910,7 +910,7 @@ export async function connectToMcpServer(
         }
 
         // For SSE servers, try to discover OAuth configuration from the base URL
-        console.log(`🔍 Attempting OAuth discovery for '${mcpServerName}'...`);
+        
 
         if (mcpServerConfig.url) {
           const sseUrl = new URL(mcpServerConfig.url);

@@ -318,13 +318,12 @@ async function loadCurrentModelProfile(): Promise<{ model: string; authType: str
       if (currentProfile) {
         logger.debug(`Loading model from profile "${settings.current}": ${currentProfile.model} (${currentProfile.provider}, ${currentProfile.authType})`);
         
-        // Set up environment variables for the current profile
-        process.env.OPENAI_MODEL = currentProfile.model;
-        if (currentProfile.baseUrl) {
+        // Set up environment variables for the current profile (only if not already set)
+        if (!process.env.OPENAI_MODEL) {
+          process.env.OPENAI_MODEL = currentProfile.model;
+        }
+        if (!process.env.OPENAI_BASE_URL && currentProfile.baseUrl) {
           process.env.OPENAI_BASE_URL = currentProfile.baseUrl;
-        } else {
-          // Clear base URL for providers that don't use custom endpoints
-          delete process.env.OPENAI_BASE_URL;
         }
         
         logger.debug(`Set OPENAI_MODEL=${currentProfile.model}, OPENAI_BASE_URL=${currentProfile.baseUrl || 'undefined'}, AuthType=${currentProfile.authType}`);
@@ -586,12 +585,21 @@ export async function loadCliConfig(
   const sandboxConfig = await loadSandboxConfig(settings, argv);
   const cliVersion = await getCliVersion();
   
-  // Load the current model from model profiles and set up provider system
-  const currentProfile = await loadCurrentModelProfile();
-  await setupProviderFromCurrentProfile();
+  // Load model profiles only if environment variables aren't already configured
+  let currentProfile: { model: string; authType: string } | null = null;
+  let finalAuthType = settings.selectedAuthType;
+  
+  if (process.env.OPENAI_MODEL && process.env.OPENAI_BASE_URL) {
+    // User has working environment setup - don't override it
+    logger.debug('Using existing environment configuration');
+  } else {
+    // Load from model profiles
+    currentProfile = await loadCurrentModelProfile();
+    await setupProviderFromCurrentProfile();
+    finalAuthType = (currentProfile?.authType as AuthType) || settings.selectedAuthType;
+  }
   
   logger.debug(`Final authType resolution: currentProfile?.authType=${currentProfile?.authType}, settings.selectedAuthType=${settings.selectedAuthType}`);
-  const finalAuthType = (currentProfile?.authType as AuthType) || settings.selectedAuthType;
   logger.debug(`Final resolved authType: ${finalAuthType}`);
 
   return new Config({

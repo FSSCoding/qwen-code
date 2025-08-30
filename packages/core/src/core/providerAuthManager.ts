@@ -385,7 +385,7 @@ export class ProviderAuthManager {
   getEffectiveAuthType(fallback?: AuthType): AuthType | undefined {
     const provider = this.getActiveProvider();
     if (!provider) {
-      console.log('🚨 ProviderAuthManager.getEffectiveAuthType: No active provider');
+
       return fallback;
     }
 
@@ -394,7 +394,7 @@ export class ProviderAuthManager {
       this.sessionCredentials.get(this.activeSession)?.provider : 
       this.activeProvider;
 
-    console.log(`🔍 ProviderAuthManager.getEffectiveAuthType: Provider=${providerId}, AuthType=${provider.authType}`);
+    
 
     switch (provider.authType) {
       case 'oauth-personal': 

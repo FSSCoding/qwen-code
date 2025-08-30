@@ -70,7 +70,7 @@ export class AnthropicContentGenerator implements ContentGenerator {
     request: GenerateContentParameters,
     userPromptId: string
   ): Promise<GenerateContentResponse> {
-    console.log('🔍 AnthropicContentGenerator.generateContent called');
+    
     console.log('🔗 Target baseURL:', this.baseUrl);
     
     return this.executeWithCredentialManagement(async () => {
@@ -113,7 +113,7 @@ export class AnthropicContentGenerator implements ContentGenerator {
     request: GenerateContentParameters,
     userPromptId: string
   ): Promise<AsyncGenerator<GenerateContentResponse>> {
-    console.log('🔍 AnthropicContentGenerator.generateContentStream called');
+    
     console.log('🔗 Target baseURL:', this.baseUrl);
     
     return this.executeWithCredentialManagement(async () => {

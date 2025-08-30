@@ -330,7 +330,7 @@ class ModelManagerInvocation extends BaseToolInvocation<ModelManagerParams, Tool
             console.log(`🔄 ModelManager - Setting runtime model: ${found.model}`);
             modelOverrideManager.setRuntimeModel(found.model);
             
-            console.log(`🔍 ModelManager - globalConfigReference exists: ${!!globalConfigReference}`);
+            
             if (globalConfigReference) {
               try {
                 // Update config
@@ -339,8 +339,8 @@ class ModelManagerInvocation extends BaseToolInvocation<ModelManagerParams, Tool
                 
                 // Get the resolved AuthType from the provider system
                 const resolvedAuthType = providerManager.getEffectiveAuthType();
-                console.log(`🔧 ModelManager - Provider: ${found.provider}, Resolved AuthType: ${resolvedAuthType}`);
-                console.log(`🚨 ModelManager - About to pass AuthType to createContentGeneratorConfig: ${resolvedAuthType || found.authType}`);
+
+
                 
                 // Create new ContentGeneratorConfig with provider-resolved auth
                 const newContentGeneratorConfig = createContentGeneratorConfig(

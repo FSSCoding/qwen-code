@@ -42,15 +42,15 @@ export interface IAnthropicOAuth2Client {
 async function loadOfficialClaudeCredentials(): Promise<AnthropicCredentials | null> {
   try {
     const filePath = path.join(os.homedir(), CLAUDE_DIR, OFFICIAL_CLAUDE_CREDENTIALS_FILE);
-    console.log('🔍 CLAUDE DEBUG: Looking for credentials at:', filePath);
+    
     
     const content = await fs.readFile(filePath, 'utf-8');
-    console.log('🔍 CLAUDE DEBUG: Credentials file size:', content.length, 'bytes');
+    
     
     const data = JSON.parse(content);
-    console.log('🔍 CLAUDE DEBUG: Parsed credentials keys:', Object.keys(data));
-    console.log('🔍 CLAUDE DEBUG: Has claudeAiOauth?', !!data.claudeAiOauth);
-    console.log('🔍 CLAUDE DEBUG: Has accessToken?', !!data.claudeAiOauth?.accessToken);
+    
+    
+    
     
     // Transform official Claude CLI credentials format to our format
     // Official format: { "claudeAiOauth": { "accessToken": "...", "refreshToken": "...", "expiresAt": 123456789 } }
@@ -73,10 +73,10 @@ async function loadOfficialClaudeCredentials(): Promise<AnthropicCredentials | n
       });
       return credentials;
     }
-    console.log('❌ CLAUDE DEBUG: No claudeAiOauth.accessToken found in credentials file');
+    
     return null;
   } catch (error) {
-    console.log('❌ CLAUDE DEBUG: Error loading credentials:', error instanceof Error ? error.message : String(error));
+    
     return null;
   }
 }
@@ -144,25 +144,25 @@ export async function getAnthropicOAuthClient(config: Config): Promise<IAnthropi
   const client = new AnthropicOAuth2Client();
 
   // Check for existing credentials from official Claude CLI
-  console.log('🔍 CLAUDE DEBUG: Checking for official Claude CLI credentials...');
+  
   const officialCreds = await loadOfficialClaudeCredentials();
-  console.log('🔍 CLAUDE DEBUG: Official creds loaded:', !!officialCreds);
+  
   
   if (officialCreds) {
     const expired = isTokenExpired(officialCreds);
-    console.log('🔍 CLAUDE DEBUG: Token expired?', expired);
-    console.log('🔍 CLAUDE DEBUG: Token expires at:', officialCreds.expires_at);
-    console.log('🔍 CLAUDE DEBUG: Current time:', Date.now());
+    
+    
+    
     
     if (!expired) {
       console.log('✅ Using credentials from official Claude CLI');
       client.setCredentials(officialCreds);
       return client;
     } else {
-      console.log('⚠️  CLAUDE DEBUG: Token is expired, will request new authentication');
+      
     }
   } else {
-    console.log('⚠️  CLAUDE DEBUG: No official Claude CLI credentials found');
+    
   }
 
   // No valid credentials found - guide user to use official Claude CLI

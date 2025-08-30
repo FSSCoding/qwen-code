@@ -91,7 +91,7 @@ export function createContentGeneratorConfig(
   // use it instead of stale config authType (e.g., local-lmstudio)
   const configAuthType = (config as any).authType;
   const effectiveAuthType = authType || configAuthType;
-  console.log(`🔧 createContentGeneratorConfig DEBUG:`);
+  
   console.log(`   📥 Input authType (provider-resolved): ${authType}`);
   console.log(`   📁 Config authType (stale): ${configAuthType}`);
   console.log(`   ✅ Effective authType selected: ${effectiveAuthType}`);
@@ -210,11 +210,11 @@ export async function createContentGenerator(
   sessionId?: string,
 ): Promise<ContentGenerator> {
   console.log(`🚀 ContentGenerator.createContentGenerator: authType=${config.authType}, model=${config.model}`);
-  console.log(`🔍 CONFIG DEBUG: gcConfig.authType=${(gcConfig as any).authType}, gcConfig.getModel()=${gcConfig.getModel()}`);
-  console.log(`🔍 AUTH DEBUG: Checking what auth path to take for authType: ${config.authType}`);
-  console.log(`🔍 AUTH DEBUG: Available auth types:`, Object.keys(AuthType));
-  console.log(`🔍 AUTH DEBUG: ANTHROPIC_OAUTH value:`, AuthType.ANTHROPIC_OAUTH);
-  console.log(`🔍 AUTH DEBUG: Does authType match ANTHROPIC_OAUTH?`, config.authType === AuthType.ANTHROPIC_OAUTH);
+  
+  
+  
+  
+  
   
   const version = gcConfig.getCliVersion() || 'unknown';
   const httpOptions = {
@@ -273,7 +273,7 @@ export async function createContentGenerator(
     );
 
     try {
-      console.log('🔍 ContentGenerator: Validating Claude CLI availability...');
+      
       
       // Check if Claude CLI is available
       const cliInfo = await ClaudeSubprocessGenerator.getCliInfo();
