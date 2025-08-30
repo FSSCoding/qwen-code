@@ -22,7 +22,7 @@ const fssCodeColors: ColorsTheme = {
   DiffRemoved: '#4D0000',
   Comment: 'gray',
   Gray: 'gray',
-  GradientColors: ['cyan', 'green'],
+  GradientColors: ['#0033CC', '#0066DD', '#4080C0'],  // Rich dark blue → Slightly muted blue → Medium blue
 };
 
 export const FSSCodeDark: Theme = new Theme(
