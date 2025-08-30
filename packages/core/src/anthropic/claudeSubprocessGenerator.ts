@@ -480,6 +480,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
    */
   private createStreamingResponse(content: string): GenerateContentResponse {
     return {
+      responseId: `claude-stream-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       candidates: [{
         content: {
           parts: [{ text: content }],
@@ -497,6 +498,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
    */
   private async *createErrorStreamGenerator(errorMessage: string): AsyncGenerator<GenerateContentResponse> {
     yield {
+      responseId: `claude-error-${Date.now()}`,
       candidates: [{
         content: {
           parts: [{ text: `Error: ${errorMessage}\n\nPlease check your Claude CLI installation and authentication.` }],
@@ -514,6 +516,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
    */
   private createFinalResponseWithText(text: string, chunk: any): GenerateContentResponse {
     const response = {
+      responseId: chunk.uuid || chunk.session_id || `claude-${Date.now()}`,
       candidates: [{
         content: {
           parts: [{ text }],
