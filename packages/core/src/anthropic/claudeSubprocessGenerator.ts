@@ -411,16 +411,29 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
             try {
               const streamChunk = JSON.parse(line) as any;
               
-              // Handle assistant message chunks
+              // Debug: Log message types (temporary)
+              if (streamChunk.type !== 'assistant') {
+                console.log(`📨 Claude message type: ${streamChunk.type}`, {
+                  hasResult: !!streamChunk.result,
+                  hasUsage: !!streamChunk.usage,
+                  hasUuid: !!streamChunk.uuid
+                });
+              }
+              
+              // Handle different Claude CLI message types
               if (streamChunk.type === 'assistant' && streamChunk.message?.content?.[0]?.text) {
                 yield this.createStreamingResponse(streamChunk.message.content[0].text);
-              } else if (streamChunk.type === 'result' && streamChunk.result) {
-                // Final response with complete result
-                yield this.createFinalResponseWithText(streamChunk.result, streamChunk);
-                return;
+              } else if (streamChunk.type === 'result') {
+                // Final response with complete result - this contains token counts
+                if (streamChunk.result) {
+                  yield this.createFinalResponseWithText(streamChunk.result, streamChunk);
+                }
+                return; // Always return after result type
               } else if (streamChunk.type === 'system' && streamChunk.subtype === 'init') {
                 // Initialization message - continue
                 // Claude CLI initialized
+              } else if (streamChunk.type === 'message_stop' || streamChunk.type === 'content_block_stop') {
+                // Claude API completion markers - handle gracefully
               }
             } catch (parseError) {
               console.warn('⚠️ Failed to parse streaming chunk, continuing...', {
@@ -431,6 +444,27 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
           }
         }
       }
+      
+      // Process any remaining data in buffer before finishing
+      if (buffer.trim()) {
+        try {
+          const streamChunk = JSON.parse(buffer) as any;
+          
+          if (streamChunk.type === 'result') {
+            // Final response with complete result - this contains token counts
+            if (streamChunk.result) {
+              yield this.createFinalResponseWithText(streamChunk.result, streamChunk);
+            }
+            return; // Always return after result type
+          }
+        } catch (parseError) {
+          console.warn('⚠️ Failed to parse final buffer content:', {
+            buffer: buffer.substring(0, 200) + (buffer.length > 200 ? '...' : ''),
+            error: parseError instanceof Error ? parseError.message : String(parseError)
+          });
+        }
+      }
+      
     } catch (error) {
       throw new Error(`Claude CLI streaming failed: ${error}`);
     }
