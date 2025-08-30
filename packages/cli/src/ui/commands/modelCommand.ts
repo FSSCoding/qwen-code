@@ -95,6 +95,14 @@ export const modelCommand: SlashCommand = {
           };
         }
 
+        case 'recent': {
+          return {
+            type: 'tool',
+            toolName: 'model_manager',
+            toolArgs: { action: 'recent' }
+          };
+        }
+
         case 'init': {
           return {
             type: 'tool',
@@ -104,6 +112,15 @@ export const modelCommand: SlashCommand = {
         }
         
         default: {
+          // Handle numeric shortcuts for recent models (1-5)
+          if (/^[1-5]$/.test(action)) {
+            return {
+              type: 'tool',
+              toolName: 'model_manager',
+              toolArgs: { action: 'switch', nickname: action }
+            };
+          }
+          
           // Assume it's a nickname for direct switching
           if (action.length <= 6 && /^[a-zA-Z0-9]+$/.test(action)) {
             return {
@@ -120,13 +137,16 @@ export const modelCommand: SlashCommand = {
                     'Usage:\n' +
                     '  /model                    - List configured models\n' +
                     '  /model <nickname>         - Switch to model by nickname\n' +
+                    '  /model 1-5                - Switch to recent model by number\n' +
                     '  /model init               - Auto-detect current environment\n' +
+                    '  /model recent             - Show recent models with shortcuts\n' +
                     '  /model add <nickname> <model> [baseUrl]\n' +
                     '  /model remove <nickname>  - Remove saved model\n' +
-                    '  /model list              - List all saved models\n' +
-                    '  /model current           - Show current model\n\n' +
+                    '  /model list               - List all saved models\n' +
+                    '  /model current            - Show current model\n\n' +
                     'Start with `/model init` to auto-detect your current setup!\n' +
-                    'Nicknames must be 1-6 alphanumeric characters.'
+                    'Nicknames must be 1-6 alphanumeric characters.\n' +
+                    'Use numbers 1-5 for quick access to recent models!'
           };
         }
       }

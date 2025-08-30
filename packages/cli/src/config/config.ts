@@ -585,19 +585,11 @@ export async function loadCliConfig(
   const sandboxConfig = await loadSandboxConfig(settings, argv);
   const cliVersion = await getCliVersion();
   
-  // Load model profiles only if environment variables aren't already configured
-  let currentProfile: { model: string; authType: string } | null = null;
-  let finalAuthType = settings.selectedAuthType;
+  // Always load model profiles but don't override existing env vars in the loading function
+  const currentProfile = await loadCurrentModelProfile();
+  await setupProviderFromCurrentProfile();
   
-  if (process.env.OPENAI_MODEL && process.env.OPENAI_BASE_URL) {
-    // User has working environment setup - don't override it
-    logger.debug('Using existing environment configuration');
-  } else {
-    // Load from model profiles
-    currentProfile = await loadCurrentModelProfile();
-    await setupProviderFromCurrentProfile();
-    finalAuthType = (currentProfile?.authType as AuthType) || settings.selectedAuthType;
-  }
+  const finalAuthType = (currentProfile?.authType as AuthType) || settings.selectedAuthType;
   
   logger.debug(`Final authType resolution: currentProfile?.authType=${currentProfile?.authType}, settings.selectedAuthType=${settings.selectedAuthType}`);
   logger.debug(`Final resolved authType: ${finalAuthType}`);

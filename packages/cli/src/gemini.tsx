@@ -324,8 +324,8 @@ export async function main() {
   const providerManager = getProviderAuthManager();
   const providerResolvedAuthType = providerManager.getEffectiveAuthType(settings.merged.selectedAuthType);
   
-  console.log(`🔧 gemini.tsx - Provider resolved AuthType: ${providerResolvedAuthType}`);
-  console.log(`🔧 gemini.tsx - Settings AuthType (stale): ${settings.merged.selectedAuthType}`);
+
+
 
   const nonInteractiveConfig = await validateNonInteractiveAuth(
     providerResolvedAuthType || settings.merged.selectedAuthType,

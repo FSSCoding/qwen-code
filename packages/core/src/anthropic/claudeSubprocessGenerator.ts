@@ -28,6 +28,8 @@ import {
 import { Config } from '../config/config.js';
 import { spawn } from 'child_process';
 import { Readable } from 'stream';
+import { logApiResponse } from '../telemetry/loggers.js';
+import { ApiResponseEvent } from '../telemetry/types.js';
 
 // Claude CLI response format
 interface ClaudeCliResponse {
@@ -71,6 +73,8 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
   private readonly timeout: number;
   private readonly defaultModel: string;
   private readonly maxRetries: number;
+  private readonly contentGeneratorConfig: ContentGeneratorConfig;
+  private readonly config: Config;
   
   constructor(
     contentGeneratorConfig: ContentGeneratorConfig,
@@ -81,6 +85,8 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
     this.timeout = options.timeout || 120000; // 2 minutes
     this.defaultModel = options.model || 'sonnet';
     this.maxRetries = options.maxRetries || 2;
+    this.contentGeneratorConfig = contentGeneratorConfig;
+    this.config = config;
     
     console.log('🔧 ClaudeSubprocessGenerator initialized:', {
       cliPath: this.cliPath,
@@ -125,7 +131,22 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
       });
       
       // Convert to Gemini format
-      return this.convertToGeminiResponse(cliResponse);
+      const response = this.convertToGeminiResponse(cliResponse);
+      
+      // Log API response for telemetry (token counting)
+      if (response.usageMetadata && !cliResponse.is_error) {
+        const responseEvent = new ApiResponseEvent(
+          response.responseId || cliResponse.session_id || `claude-${Date.now()}`,
+          this.defaultModel, // Use the model we actually used
+          cliResponse.duration_ms,
+          userPromptId,
+          this.contentGeneratorConfig.authType,
+          response.usageMetadata,
+        );
+        logApiResponse(this.config, responseEvent);
+      }
+      
+      return response;
       
     } catch (error) {
       console.error('❌ ClaudeSubprocessGenerator.generateContent failed:', error);
@@ -158,7 +179,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
       console.log('📝 Streaming prompt length:', prompt.length);
       console.log('🤖 Using model for streaming:', model);
       
-      return this.executeClaudeStreamingCommand(prompt, { model });
+      return this.executeClaudeStreamingCommand(prompt, { model, userPromptId });
       
     } catch (error) {
       console.error('❌ ClaudeSubprocessGenerator.generateContentStream failed:', error);
@@ -170,14 +191,54 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
   }
 
   /**
+   * Create system prompt explaining Claude's role in the QwenCode system
+   */
+  private createSystemPrompt(): string {
+    return `IMPORTANT: You are Claude Code Max operating within the QwenCode system. Here's how you should behave:
+
+🔧 TOOL SYSTEM ARCHITECTURE:
+- You are the "reasoning brain" - you analyze, plan, and provide instructions
+- You CANNOT execute tools directly - all tool execution happens through QwenCode's local system
+- When you want to use tools, simply describe your intentions naturally in your response
+- Examples of good tool requests:
+  • "I'll read the file config.ts to understand the configuration"
+  • "Let me run \`npm run build\` to check for errors"
+  • "I need to search for 'function authenticate' in the codebase"
+  • "I'll write the following code to utils.js"
+
+🎯 YOUR ROLE:
+- Analyze problems and provide solutions
+- Request tools by describing what you want to do
+- Review tool results and continue reasoning
+- Provide clear explanations of your thought process
+- Focus on the "why" and "what" rather than the "how" of execution
+
+⚠️ WHAT NOT TO DO:
+- Don't try to execute commands yourself
+- Don't assume tools have already been run
+- Don't use tool-specific syntax (you're not in a tool environment)
+- Don't mention that you "can't execute tools" - just describe what you want to do
+
+The QwenCode system will automatically detect your tool intentions and execute them safely through the local Qwen agent system. Simply focus on being helpful and describing your intended actions clearly.
+
+---
+
+`;
+  }
+
+  /**
    * Extract text prompt from Gemini request format
    */
   private extractPromptFromRequest(request: GenerateContentParameters): string {
     const parts: string[] = [];
     
+    // Always start with our system prompt explaining Claude's role
+    parts.push(this.createSystemPrompt());
+    
     // Handle ContentListUnion format
     if (typeof request.contents === 'string') {
-      return request.contents;
+      parts.push(`[User]: ${request.contents}`);
+      return parts.join('\n\n');
     }
     
     if (!Array.isArray(request.contents)) {
@@ -281,6 +342,13 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
           args.push('--model', options.model);
         }
         
+        // CRITICAL: Disable all tools in Claude CLI - we handle tools through QwenCode's system
+        args.push('--disallowed-tools', '*');
+        
+        // Additional safety measures
+        args.push('--permission-mode', 'plan'); // Request plans instead of direct execution
+        args.push('--dangerously-skip-permissions'); // Skip permission prompts since we handle them
+        
         console.log(`🔧 Executing Claude CLI (attempt ${attempt}/${this.maxRetries}):`, {
           command: this.cliPath,
           args: args,
@@ -373,13 +441,20 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
    */
   private async *executeClaudeStreamingCommand(
     prompt: string,
-    options: { model?: string } = {}
+    options: { model?: string; userPromptId?: string } = {}
   ): AsyncGenerator<GenerateContentResponse> {
     const args = ['-p', '--output-format=stream-json', '--verbose'];
     
     if (options.model) {
       args.push('--model', options.model);
     }
+    
+    // CRITICAL: Disable all tools in Claude CLI - we handle tools through QwenCode's system
+    args.push('--disallowed-tools', '*');
+    
+    // Additional safety measures for streaming
+    args.push('--permission-mode', 'plan'); // Request plans instead of direct execution
+    args.push('--dangerously-skip-permissions'); // Skip permission prompts since we handle them
     
     console.log('🔧 Executing Claude CLI streaming:', {
       command: this.cliPath,
@@ -426,7 +501,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
               } else if (streamChunk.type === 'result') {
                 // Final response with complete result - this contains token counts
                 if (streamChunk.result) {
-                  yield this.createFinalResponseWithText(streamChunk.result, streamChunk);
+                  yield this.createFinalResponseWithText(streamChunk.result, streamChunk, options.userPromptId);
                 }
                 return; // Always return after result type
               } else if (streamChunk.type === 'system' && streamChunk.subtype === 'init') {
@@ -453,7 +528,7 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
           if (streamChunk.type === 'result') {
             // Final response with complete result - this contains token counts
             if (streamChunk.result) {
-              yield this.createFinalResponseWithText(streamChunk.result, streamChunk);
+              yield this.createFinalResponseWithText(streamChunk.result, streamChunk, options.userPromptId);
             }
             return; // Always return after result type
           }
@@ -478,10 +553,14 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
       throw new Error(cliResponse.error_message || 'Claude CLI returned an error');
     }
     
+    // Parse the response for tool calls
+    const responseParts = this.parseToolCallsFromText(cliResponse.result);
+    
     const response = {
+      responseId: cliResponse.session_id || `claude-${Date.now()}`,
       candidates: [{
         content: {
-          parts: [{ text: cliResponse.result }],
+          parts: responseParts,
           role: 'model'
         },
         finishReason: FinishReason.STOP,
@@ -548,12 +627,15 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
   /**
    * Create final streaming response with text and metadata
    */
-  private createFinalResponseWithText(text: string, chunk: any): GenerateContentResponse {
+  private createFinalResponseWithText(text: string, chunk: any, userPromptId?: string): GenerateContentResponse {
+    // Parse the final text for tool calls
+    const responseParts = this.parseToolCallsFromText(text);
+    
     const response = {
       responseId: chunk.uuid || chunk.session_id || `claude-${Date.now()}`,
       candidates: [{
         content: {
-          parts: [{ text }],
+          parts: responseParts,
           role: 'model'
         },
         finishReason: FinishReason.STOP,
@@ -580,7 +662,296 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
       };
     }
     
+    // Log API response for telemetry (token counting) in streaming mode
+    if (response.usageMetadata && userPromptId) {
+      const responseEvent = new ApiResponseEvent(
+        response.responseId || chunk.session_id || `claude-stream-${Date.now()}`,
+        this.defaultModel, // Use the model we actually used
+        chunk.duration_ms || 0,
+        userPromptId,
+        this.contentGeneratorConfig.authType,
+        response.usageMetadata,
+      );
+      logApiResponse(this.config, responseEvent);
+    }
+    
     return response;
+  }
+
+  /**
+   * Parse text response for tool call patterns and convert to function call parts
+   * This detects when Claude wants to use tools but was prevented by --disallowed-tools
+   */
+  private parseToolCallsFromText(text: string): Part[] {
+    const parts: Part[] = [];
+    
+    // Comprehensive tool call patterns Claude uses when it wants to execute tools
+    const toolPatterns = [
+      // READ TOOL - File reading operations
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:read|check|examine|look at|view|see|open) (?:the )?(?:file|contents of|code in) ["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Read',
+        extractArgs: (match: RegExpMatchArray) => ({ file_path: this.cleanPath(match[1]) })
+      },
+      {
+        pattern: /Let me (?:read|check|examine|look at|view|see|open) (?:the )?(?:file|contents of|code in) ["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Read',
+        extractArgs: (match: RegExpMatchArray) => ({ file_path: this.cleanPath(match[1]) })
+      },
+      {
+        pattern: /(?:First|Next|Now),? (?:I'll|let me|I need to) read ["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Read',
+        extractArgs: (match: RegExpMatchArray) => ({ file_path: this.cleanPath(match[1]) })
+      },
+
+      // WRITE TOOL - File writing operations  
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:write|create|save|update) (?:the )?(?:following|this|content) (?:to|into|in) (?:the )?(?:file )?["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Write',
+        extractArgs: (match: RegExpMatchArray) => ({ file_path: this.cleanPath(match[1]), content: "" })
+      },
+      {
+        pattern: /Let me (?:write|create|save|update) (?:the )?(?:following|this|content) (?:to|into|in) (?:the )?(?:file )?["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Write',
+        extractArgs: (match: RegExpMatchArray) => ({ file_path: this.cleanPath(match[1]), content: "" })
+      },
+      {
+        pattern: /I(?:'ll| will) create (?:a )?(?:new )?file ["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Write',
+        extractArgs: (match: RegExpMatchArray) => ({ file_path: this.cleanPath(match[1]), content: "" })
+      },
+
+      // EDIT TOOL - File editing operations
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:edit|modify|change|update) (?:the )?(?:file )?["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Edit',
+        extractArgs: (match: RegExpMatchArray) => ({ file_path: this.cleanPath(match[1]), old_string: "", new_string: "" })
+      },
+      {
+        pattern: /Let me (?:edit|modify|change|update) (?:the )?(?:file )?["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Edit',
+        extractArgs: (match: RegExpMatchArray) => ({ file_path: this.cleanPath(match[1]), old_string: "", new_string: "" })
+      },
+
+      // BASH TOOL - Command execution
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:run|execute|use) (?:the )?(?:command )?["`']([^"`']+)["`']/gi,
+        tool: 'Bash',
+        extractArgs: (match: RegExpMatchArray) => ({ command: match[1].trim() })
+      },
+      {
+        pattern: /Let me (?:run|execute|use) (?:the )?(?:command )?["`']([^"`']+)["`']/gi,
+        tool: 'Bash',
+        extractArgs: (match: RegExpMatchArray) => ({ command: match[1].trim() })
+      },
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:run|execute|use) (?:the )?(?:command )?`([^`]+)`/gi,
+        tool: 'Bash',
+        extractArgs: (match: RegExpMatchArray) => ({ command: match[1].trim() })
+      },
+      {
+        pattern: /(?:First|Next|Now),? (?:I'll|let me|I need to) run `([^`]+)`/gi,
+        tool: 'Bash',
+        extractArgs: (match: RegExpMatchArray) => ({ command: match[1].trim() })
+      },
+
+      // GREP TOOL - Search operations
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:search|grep|find|look) for ["`']([^"`']+)["`'] in (?:the )?(?:file )?["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Grep',
+        extractArgs: (match: RegExpMatchArray) => ({ pattern: match[1].trim(), path: this.cleanPath(match[2]) })
+      },
+      {
+        pattern: /Let me (?:search|grep|find|look) for ["`']([^"`']+)["`'] in (?:the )?(?:file )?["`']?([^"`'\s]+(?:\.[a-zA-Z0-9]+)?)["`']?/gi,
+        tool: 'Grep',
+        extractArgs: (match: RegExpMatchArray) => ({ pattern: match[1].trim(), path: this.cleanPath(match[2]) })
+      },
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:search|grep|find|look) for ([a-zA-Z0-9_]+) in (?:the )?(?:codebase|project|files)/gi,
+        tool: 'Grep',
+        extractArgs: (match: RegExpMatchArray) => ({ pattern: match[1].trim(), output_mode: "files_with_matches" })
+      },
+
+      // GLOB TOOL - File pattern matching
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:find|locate|list) (?:all )?(?:files )?(?:matching |with pattern )?["`']([^"`']+)["`']/gi,
+        tool: 'Glob',
+        extractArgs: (match: RegExpMatchArray) => ({ pattern: match[1].trim() })
+      },
+      {
+        pattern: /Let me (?:find|locate|list) (?:all )?(?:files )?(?:matching |with pattern )?["`']([^"`']+)["`']/gi,
+        tool: 'Glob',
+        extractArgs: (match: RegExpMatchArray) => ({ pattern: match[1].trim() })
+      },
+
+      // LS TOOL - Directory listing
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) (?:list|see|check) (?:the )?(?:contents of |files in )?(?:the )?(?:directory )?["`']?([^"`'\s]+)["`']?/gi,
+        tool: 'LS',
+        extractArgs: (match: RegExpMatchArray) => ({ path: this.cleanPath(match[1]) })
+      },
+      {
+        pattern: /Let me (?:list|see|check) (?:the )?(?:contents of |files in )?(?:the )?(?:directory )?["`']?([^"`'\s]+)["`']?/gi,
+        tool: 'LS',
+        extractArgs: (match: RegExpMatchArray) => ({ path: this.cleanPath(match[1]) })
+      },
+
+      // Generic tool intentions
+      {
+        pattern: /I(?:'ll| will|'d like to| need to) use (?:the )?([A-Z][a-zA-Z]+) tool/gi,
+        tool: (match: RegExpMatchArray) => match[1],
+        extractArgs: () => ({})
+      }
+    ];
+    
+    try {
+      // Split text into meaningful chunks for better pattern matching
+      const textChunks = this.splitTextForParsing(text);
+      
+      for (const chunk of textChunks) {
+        for (const toolPattern of toolPatterns) {
+          const matches = [...chunk.matchAll(toolPattern.pattern)];
+          
+          for (const match of matches) {
+            try {
+              const toolName = typeof toolPattern.tool === 'function' 
+                ? toolPattern.tool(match) 
+                : toolPattern.tool;
+              
+              const args = toolPattern.extractArgs(match);
+              
+              // Validate tool name and args
+              if (this.isValidToolCall(toolName, args)) {
+                const functionCall = {
+                  functionCall: {
+                    name: toolName,
+                    args: args,
+                    id: `claude-tool-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+                  }
+                };
+                
+                parts.push(functionCall);
+                
+                console.log('🔧 Detected Claude tool request:', {
+                  tool: toolName,
+                  args: args,
+                  originalText: match[0].substring(0, 100) + (match[0].length > 100 ? '...' : ''),
+                  confidence: this.calculateToolConfidence(match[0], toolName)
+                });
+              }
+              
+            } catch (error) {
+              console.warn('⚠️ Failed to parse tool call:', {
+                pattern: toolPattern.pattern,
+                match: match[0].substring(0, 50),
+                error: error instanceof Error ? error.message : String(error)
+              });
+            }
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Critical error in tool parsing:', error);
+      // Continue with just text if parsing fails
+    }
+    
+    // Always include the original text as the first part  
+    parts.unshift({ text });
+    
+    return parts;
+  }
+
+  /**
+   * Clean and normalize file paths from Claude responses
+   */
+  private cleanPath(path: string): string {
+    return path
+      .replace(/["`']/g, '') // Remove quotes
+      .replace(/\s*\.\s*$/, '') // Remove trailing periods
+      .replace(/\s*,\s*$/, '') // Remove trailing commas
+      .replace(/^[^\w\/\.]/, '') // Remove leading non-path characters
+      .trim();
+  }
+
+  /**
+   * Split text into meaningful chunks for better tool pattern detection
+   */
+  private splitTextForParsing(text: string): string[] {
+    // Split by sentences but keep some context
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    const chunks: string[] = [];
+    
+    // Create overlapping chunks to catch patterns that span sentence boundaries
+    for (let i = 0; i < sentences.length; i++) {
+      // Single sentence
+      chunks.push(sentences[i]);
+      
+      // Two-sentence chunks for context
+      if (i < sentences.length - 1) {
+        chunks.push(sentences[i] + ' ' + sentences[i + 1]);
+      }
+    }
+    
+    // Also include the full text for global patterns
+    chunks.push(text);
+    
+    return chunks;
+  }
+
+  /**
+   * Validate if a tool call is reasonable and should be executed
+   */
+  private isValidToolCall(toolName: string, args: Record<string, any>): boolean {
+    const validTools = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'LS', 'MultiEdit', 'NotebookEdit'];
+    
+    if (!validTools.includes(toolName)) {
+      console.warn(`⚠️ Unknown tool name: ${toolName}`);
+      return false;
+    }
+    
+    // Basic argument validation
+    switch (toolName) {
+      case 'Read':
+      case 'LS':
+        return args.file_path || args.path;
+      case 'Write':
+      case 'Edit':
+        return args.file_path && typeof args.file_path === 'string';
+      case 'Bash':
+        return args.command && args.command.length > 0 && !args.command.includes('rm -rf');
+      case 'Grep':
+        return args.pattern && args.pattern.length > 0;
+      case 'Glob':
+        return args.pattern && args.pattern.length > 0;
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * Calculate confidence score for tool detection (for debugging/monitoring)
+   */
+  private calculateToolConfidence(text: string, toolName: string): number {
+    let confidence = 0.5; // Base confidence
+    
+    // Increase confidence for explicit tool mentions
+    if (text.toLowerCase().includes(toolName.toLowerCase())) {
+      confidence += 0.3;
+    }
+    
+    // Increase confidence for clear intent words
+    const intentWords = ['will', "I'll", 'let me', 'need to', 'going to'];
+    if (intentWords.some(word => text.toLowerCase().includes(word))) {
+      confidence += 0.2;
+    }
+    
+    // Increase confidence for file paths or commands in quotes
+    if (/["`'][^"`']+["`']/.test(text)) {
+      confidence += 0.2;
+    }
+    
+    return Math.min(confidence, 1.0);
   }
 
   /**
