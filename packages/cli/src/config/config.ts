@@ -59,7 +59,12 @@ interface ModelSettings {
 // Simple console logger for now - replace with actual logger if available
 const logger = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  debug: (...args: any[]) => console.debug('[DEBUG]', ...args),
+  debug: (...args: any[]) => {
+    // Only show debug logs when explicitly in debug mode
+    if (process.argv.includes('--debug') || process.env.DEBUG) {
+      console.debug('[DEBUG]', ...args);
+    }
+  },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   warn: (...args: any[]) => console.warn('[WARN]', ...args),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

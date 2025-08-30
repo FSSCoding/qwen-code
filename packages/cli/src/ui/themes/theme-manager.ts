@@ -15,8 +15,7 @@ import { DefaultLight } from './default-light.js';
 import { DefaultDark } from './default.js';
 import { ShadesOfPurple } from './shades-of-purple.js';
 import { XCode } from './xcode.js';
-import { QwenLight } from './qwen-light.js';
-import { QwenDark } from './qwen-dark.js';
+import { FSSCodeDark } from './fss-code-dark.js';
 import {
   Theme,
   ThemeType,
@@ -36,7 +35,7 @@ export interface ThemeDisplay {
   isCustom?: boolean;
 }
 
-export const DEFAULT_THEME: Theme = QwenDark;
+export const DEFAULT_THEME: Theme = ANSI;
 
 class ThemeManager {
   private readonly availableThemes: Theme[];
@@ -45,6 +44,7 @@ class ThemeManager {
 
   constructor() {
     this.availableThemes = [
+      FSSCodeDark,
       AyuDark,
       AyuLight,
       AtomOneDark,
@@ -54,8 +54,6 @@ class ThemeManager {
       GitHubDark,
       GitHubLight,
       GoogleCode,
-      QwenLight,
-      QwenDark,
       ShadesOfPurple,
       XCode,
       ANSI,
@@ -182,12 +180,15 @@ class ThemeManager {
       }),
     );
 
-    // Separate Qwen themes
-    const qwenThemes = builtInThemes.filter(
-      (theme) => theme.name === QwenLight.name || theme.name === QwenDark.name,
+    // Separate FSS-Code themes (prioritize them)
+    const fssThemes = builtInThemes.filter(
+      (theme) => theme.name.includes('FSS-Code'),
     );
+    
+    // Remove Qwen themes entirely and get other themes
     const otherBuiltInThemes = builtInThemes.filter(
-      (theme) => theme.name !== QwenLight.name && theme.name !== QwenDark.name,
+      (theme) => !theme.name.includes('FSS-Code') && 
+                !theme.name.includes('Qwen')
     );
 
     // Sort other themes by type and then name
@@ -216,8 +217,8 @@ class ThemeManager {
       },
     );
 
-    // Combine Qwen themes first, then sorted others
-    return [...qwenThemes, ...sortedOtherThemes];
+    // Combine FSS-Code themes first, then sorted others
+    return [...fssThemes, ...sortedOtherThemes];
   }
 
   /**
