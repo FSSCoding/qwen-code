@@ -28,6 +28,7 @@ import {
   WriteFileTool,
   MCPServerConfig,
   ConfigParameters,
+  AuthType,
 } from '@qwen-code/qwen-code-core';
 import { Settings } from './settings.js';
 
@@ -37,6 +38,23 @@ import { loadSandboxConfig } from './sandboxConfig.js';
 import { resolvePath } from '../utils/resolvePath.js';
 
 import { isWorkspaceTrusted } from './trustedFolders.js';
+
+// Model profile interface matching the modelManager.ts format
+interface ModelProfile {
+  nickname: string;
+  displayName: string;
+  model: string;
+  provider: string;
+  authType: string;
+  baseUrl?: string;
+  description?: string;
+  lastUsed: Date;
+}
+
+interface ModelSettings {
+  models: ModelProfile[];
+  current?: string;
+}
 
 // Simple console logger for now - replace with actual logger if available
 const logger = {
@@ -284,6 +302,78 @@ export async function parseArguments(): Promise<CliArgs> {
   return result as unknown as CliArgs;
 }
 
+/**
+ * Load the current model profile data
+ */
+async function loadCurrentModelProfile(): Promise<{ model: string; authType: string } | null> {
+  const SETTINGS_FILE = path.join(homedir(), '.qwen', 'model-profiles.json');
+  
+  try {
+    const data = await fs.promises.readFile(SETTINGS_FILE, 'utf-8');
+    const settings: ModelSettings = JSON.parse(data);
+    
+    // If there's a current model set, find it and return the model identifier and authType
+    if (settings.current) {
+      const currentProfile = settings.models.find(m => m.nickname === settings.current);
+      if (currentProfile) {
+        logger.debug(`Loading model from profile "${settings.current}": ${currentProfile.model} (${currentProfile.provider}, ${currentProfile.authType})`);
+        
+        // Set up environment variables for the current profile
+        process.env.OPENAI_MODEL = currentProfile.model;
+        if (currentProfile.baseUrl) {
+          process.env.OPENAI_BASE_URL = currentProfile.baseUrl;
+        } else {
+          // Clear base URL for providers that don't use custom endpoints
+          delete process.env.OPENAI_BASE_URL;
+        }
+        
+        logger.debug(`Set OPENAI_MODEL=${currentProfile.model}, OPENAI_BASE_URL=${currentProfile.baseUrl || 'undefined'}, AuthType=${currentProfile.authType}`);
+        
+        return { 
+          model: currentProfile.model, 
+          authType: currentProfile.authType 
+        };
+      } else {
+        logger.warn(`Current profile "${settings.current}" not found in model profiles`);
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    // File doesn't exist or can't be parsed - not an error, just no profiles configured
+    logger.debug('No model profiles found or error reading profiles:', error instanceof Error ? error.message : 'Unknown error');
+    return null;
+  }
+}
+
+/**
+ * Set up the provider system with the current model profile
+ */
+async function setupProviderFromCurrentProfile(): Promise<void> {
+  const SETTINGS_FILE = path.join(homedir(), '.qwen', 'model-profiles.json');
+  
+  try {
+    const data = await fs.promises.readFile(SETTINGS_FILE, 'utf-8');
+    const settings: ModelSettings = JSON.parse(data);
+    
+    // If there's a current model set, find it and set up the provider
+    if (settings.current) {
+      const currentProfile = settings.models.find(m => m.nickname === settings.current);
+      if (currentProfile) {
+        // Import and set up the provider system dynamically
+        const { getProviderAuthManager } = await import('@qwen-code/qwen-code-core');
+        const providerManager = getProviderAuthManager();
+        
+        logger.debug(`Setting up provider system with: ${currentProfile.provider}`);
+        const success = providerManager.setActiveProvider(currentProfile.provider);
+        logger.debug(`Provider setup result: ${success}`);
+      }
+    }
+  } catch (error) {
+    logger.debug('Error setting up provider from profile:', error instanceof Error ? error.message : 'Unknown error');
+  }
+}
+
 // This function is now a thin wrapper around the server's implementation.
 // It's kept in the CLI for now as App.tsx directly calls it for memory refresh.
 // TODO: Consider if App.tsx should get memory via a server call or if Config should refresh itself.
@@ -495,6 +585,14 @@ export async function loadCliConfig(
 
   const sandboxConfig = await loadSandboxConfig(settings, argv);
   const cliVersion = await getCliVersion();
+  
+  // Load the current model from model profiles and set up provider system
+  const currentProfile = await loadCurrentModelProfile();
+  await setupProviderFromCurrentProfile();
+  
+  logger.debug(`Final authType resolution: currentProfile?.authType=${currentProfile?.authType}, settings.selectedAuthType=${settings.selectedAuthType}`);
+  const finalAuthType = (currentProfile?.authType as AuthType) || settings.selectedAuthType;
+  logger.debug(`Final resolved authType: ${finalAuthType}`);
 
   return new Config({
     sessionId,
@@ -551,7 +649,7 @@ export async function loadCliConfig(
     cwd,
     fileDiscoveryService: fileService,
     bugCommand: settings.bugCommand,
-    model: argv.model || settings.model || DEFAULT_GEMINI_MODEL,
+    model: argv.model || currentProfile?.model || settings.model || DEFAULT_GEMINI_MODEL,
     extensionContextFilePaths,
     maxSessionTurns: settings.maxSessionTurns ?? -1,
     sessionTokenLimit: settings.sessionTokenLimit ?? -1,
@@ -577,7 +675,7 @@ export async function loadCliConfig(
           'SYSTEM_TEMPLATE:{"name":"qwen3_coder","params":{"is_git_repository":{RUNTIME_VARS_IS_GIT_REPO},"sandbox":"{RUNTIME_VARS_SANDBOX}"}}',
       },
     ]) as ConfigParameters['systemPromptMappings'],
-    authType: settings.selectedAuthType,
+    authType: finalAuthType,
     contentGenerator: settings.contentGenerator,
     cliVersion,
     tavilyApiKey:
