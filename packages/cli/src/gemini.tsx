@@ -318,8 +318,17 @@ export async function main() {
     prompt_length: input.length,
   });
 
+  // CRITICAL FIX: Use provider-resolved AuthType instead of stale settings
+  // Import and use the provider system to get the correct AuthType for the active provider
+  const { getProviderAuthManager } = await import('@qwen-code/qwen-code-core');
+  const providerManager = getProviderAuthManager();
+  const providerResolvedAuthType = providerManager.getEffectiveAuthType(settings.merged.selectedAuthType);
+  
+  console.log(`🔧 gemini.tsx - Provider resolved AuthType: ${providerResolvedAuthType}`);
+  console.log(`🔧 gemini.tsx - Settings AuthType (stale): ${settings.merged.selectedAuthType}`);
+
   const nonInteractiveConfig = await validateNonInteractiveAuth(
-    settings.merged.selectedAuthType,
+    providerResolvedAuthType || settings.merged.selectedAuthType,
     settings.merged.useExternalAuth,
     config,
   );

@@ -12,5 +12,42 @@
   },
   "[javascript]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  
+  // Test Explorer Configuration for Claude Integration
+  "jest.jestCommandLine": "npm test",
+  "jest.autoRun": "off",
+  "jest.showCoverageOnLoad": true,
+  "jest.coverageFormatter": "DefaultFormatter",
+  
+  // Test file patterns
+  "files.associations": {
+    "*.test.ts": "typescript",
+    "*.test.js": "javascript",
+    "*.spec.ts": "typescript",
+    "*.spec.js": "javascript"
+  },
+  
+  // Auto-save for test files
+  "files.autoSave": "onFocusChange",
+  
+  // Claude Integration specific settings
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/bundle": true,
+    "**/.git": true,
+    "**/coverage": true
+  },
+  
+  // Code formatting for consistency
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit",
+    "source.organizeImports": "explicit"
+  },
+  
+  // Test debugging
+  "debug.node.autoAttach": "on",
+  "debug.terminal.clearBeforeReusing": true
 }

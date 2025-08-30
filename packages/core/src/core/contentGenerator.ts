@@ -86,11 +86,11 @@ export function createContentGeneratorConfig(
 ): ContentGeneratorConfig {
   debugLog('createContentGeneratorConfig called - authType:', authType, 'config.getModel():', config.getModel());
   
-  // CRITICAL BUG FIX: Prioritize config authType when it exists and is valid
-  // The config authType is more reliable than the passed authType in cases where
-  // the provider resolution system has issues
+  // CRITICAL BUG FIX: Prioritize provider-resolved authType when switching models
+  // When the provider system correctly resolves authType (e.g., anthropic-oauth),
+  // use it instead of stale config authType (e.g., local-lmstudio)
   const configAuthType = (config as any).authType;
-  const effectiveAuthType = configAuthType || authType;
+  const effectiveAuthType = authType || configAuthType;
   console.log(`🔧 createContentGeneratorConfig DEBUG:`);
   console.log(`   📥 Input authType (provider-resolved): ${authType}`);
   console.log(`   📁 Config authType (stale): ${configAuthType}`);

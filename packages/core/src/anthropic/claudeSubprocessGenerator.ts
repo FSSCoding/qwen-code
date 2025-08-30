@@ -221,6 +221,8 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
    */
   private extractModelFromRequest(request: GenerateContentParameters): string {
     if (request.model) {
+      console.log(`🔍 extractModelFromRequest: request.model="${request.model}"`);
+      
       // Map full model names to Claude CLI aliases
       const modelMappings: Record<string, string> = {
         'claude-sonnet-4-20250514': 'sonnet',
@@ -229,9 +231,18 @@ export class ClaudeSubprocessGenerator implements ContentGenerator {
         'claude-3-opus-20240229': 'opus'
       };
       
-      return modelMappings[request.model] || request.model;
+      // CRITICAL FIX: If non-Claude model is requested, use default Claude model instead
+      if (request.model.includes('gemini') || request.model.includes('gpt') || request.model.includes('qwen')) {
+        console.log(`⚠️  Non-Claude model "${request.model}" requested, using default: ${this.defaultModel}`);
+        return this.defaultModel;
+      }
+      
+      const mappedModel = modelMappings[request.model] || request.model;
+      console.log(`🎯 Model mapping: "${request.model}" -> "${mappedModel}"`);
+      return mappedModel;
     }
     
+    console.log(`🎯 No model in request, using default: ${this.defaultModel}`);
     return this.defaultModel;
   }
 

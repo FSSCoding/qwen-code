@@ -30,6 +30,8 @@ export async function validateNonInteractiveAuth(
   useExternalAuth: boolean | undefined,
   nonInteractiveConfig: Config,
 ) {
+  // CRITICAL FIX: Use provider-resolved authType when available, prevent stale config override
+  // When ModelManager resolves authType (e.g., ANTHROPIC_OAUTH), use it instead of stale settings
   const effectiveAuthType = configuredAuthType || getAuthTypeFromEnv();
 
   if (!effectiveAuthType) {
