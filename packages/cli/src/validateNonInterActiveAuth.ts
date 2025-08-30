@@ -4,9 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AuthType, Config } from '@qwen-code/qwen-code-core';
+import { AuthType, Config, debugLog } from '@qwen-code/qwen-code-core';
 import { USER_SETTINGS_PATH } from './config/settings.js';
 import { validateAuthMethod } from './config/auth.js';
+import { getModelOverrideManager } from '@qwen-code/qwen-code-core';
 
 function getAuthTypeFromEnv(): AuthType | undefined {
   if (process.env.GOOGLE_GENAI_USE_GCA === 'true') {
@@ -46,6 +47,16 @@ export async function validateNonInteractiveAuth(
     }
   }
 
+  // SMOKING GUN FIX: Preserve runtime model override before refreshAuth destroys it
+  const modelOverrideManager = getModelOverrideManager();
+  debugLog('validateNonInteractiveAuth - Preserving model override before refreshAuth');
+  modelOverrideManager.preserveBeforeRefresh(nonInteractiveConfig);
+
   await nonInteractiveConfig.refreshAuth(effectiveAuthType);
+  
+  // SMOKING GUN FIX: Restore runtime model override after refreshAuth
+  debugLog('validateNonInteractiveAuth - Restoring model override after refreshAuth');
+  modelOverrideManager.restoreAfterRefresh(nonInteractiveConfig);
+  
   return nonInteractiveConfig;
 }

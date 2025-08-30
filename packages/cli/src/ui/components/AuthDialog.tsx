@@ -47,8 +47,11 @@ export function AuthDialog({
   );
   const [showOpenAIKeyPrompt, setShowOpenAIKeyPrompt] = useState(false);
   const items = [
+    { label: 'Local LM Studio (http://localhost:1234)', value: AuthType.LOCAL_LMSTUDIO },
+    { label: 'Local Ollama (http://localhost:11434)', value: AuthType.LOCAL_OLLAMA },
     { label: 'Qwen OAuth', value: AuthType.QWEN_OAUTH },
     { label: 'OpenAI', value: AuthType.USE_OPENAI },
+    { label: 'Claude Code Max', value: AuthType.ANTHROPIC_OAUTH },
   ];
 
   const initialAuthIndex = Math.max(
@@ -74,6 +77,13 @@ export function AuthDialog({
   );
 
   const handleAuthSelect = (authMethod: AuthType) => {
+    // Local models don't need validation, they work directly
+    if (authMethod === AuthType.LOCAL_LMSTUDIO || authMethod === AuthType.LOCAL_OLLAMA) {
+      setErrorMessage(null);
+      onSelect(authMethod, SettingScope.User);
+      return;
+    }
+
     const error = validateAuthMethod(authMethod);
     if (error) {
       if (authMethod === AuthType.USE_OPENAI && !process.env.OPENAI_API_KEY) {
@@ -104,6 +114,7 @@ export function AuthDialog({
     setShowOpenAIKeyPrompt(false);
     setErrorMessage('OpenAI API key is required to use OpenAI authentication.');
   };
+
 
   useKeypress(
     (key) => {
@@ -138,6 +149,7 @@ export function AuthDialog({
       />
     );
   }
+
 
   return (
     <Box

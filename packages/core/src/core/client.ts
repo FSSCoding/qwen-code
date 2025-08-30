@@ -232,7 +232,7 @@ export class GeminiClient {
     ];
     try {
       const userMemory = this.config.getUserMemory();
-      const systemInstruction = getCoreSystemPrompt(userMemory);
+      const systemInstruction = getCoreSystemPrompt(userMemory, undefined, this.config);
       const generateContentConfigWithThinking = isThinkingSupported(
         this.config.getModel(),
       )
@@ -472,7 +472,7 @@ export class GeminiClient {
       // Get all the content that would be sent in an API call
       const currentHistory = this.getChat().getHistory(true);
       const userMemory = this.config.getUserMemory();
-      const systemPrompt = getCoreSystemPrompt(userMemory);
+      const systemPrompt = getCoreSystemPrompt(userMemory, undefined, this.config);
       const environment = await getEnvironmentContext(this.config);
 
       // Create a mock request content to count total tokens
@@ -602,7 +602,7 @@ export class GeminiClient {
       model || this.config.getModel() || DEFAULT_GEMINI_FLASH_MODEL;
     try {
       const userMemory = this.config.getUserMemory();
-      const systemInstruction = getCoreSystemPrompt(userMemory);
+      const systemInstruction = getCoreSystemPrompt(userMemory, undefined, this.config);
       const requestConfig = {
         abortSignal,
         ...this.generateContentConfig,
@@ -690,7 +690,7 @@ export class GeminiClient {
 
     try {
       const userMemory = this.config.getUserMemory();
-      const systemInstruction = getCoreSystemPrompt(userMemory);
+      const systemInstruction = getCoreSystemPrompt(userMemory, undefined, this.config);
 
       const requestConfig = {
         abortSignal,

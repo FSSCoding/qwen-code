@@ -51,6 +51,25 @@ export const validateAuthMethod = (authMethod: string): string | null => {
     return null;
   }
 
+
+  if (authMethod === AuthType.ANTHROPIC_OAUTH) {
+    // Anthropic OAuth doesn't require any environment variables for basic setup
+    // The OAuth flow will handle authentication via browser
+    return null;
+  }
+
+  if (authMethod === AuthType.LOCAL_LMSTUDIO) {
+    // LM Studio doesn't require any environment variables
+    // It uses the default endpoint http://localhost:1234/v1
+    return null;
+  }
+
+  if (authMethod === AuthType.LOCAL_OLLAMA) {
+    // Ollama doesn't require any environment variables  
+    // It uses the default endpoint http://localhost:11434/v1
+    return null;
+  }
+
   return 'Invalid auth method selected.';
 };
 
@@ -65,3 +84,4 @@ export const setOpenAIBaseUrl = (baseUrl: string): void => {
 export const setOpenAIModel = (model: string): void => {
   process.env.OPENAI_MODEL = model;
 };
+

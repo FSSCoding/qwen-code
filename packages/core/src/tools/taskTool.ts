@@ -13,11 +13,12 @@ import {
 import { FunctionDeclaration } from '@google/genai';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { debugLog } from '../utils/debugLog.js';
 
 const taskToolSchemaData: FunctionDeclaration = {
   name: 'qwen_tasks',
   description:
-    'Manage task lists efficiently. Visual indicators: ● complete, 🟡 active, ○ pending. Always show task list after modifications for immediate visual feedback. Limits: max 100 total tasks, max 25 per batch operation.',
+    'Manage task lists efficiently. Visual indicators: ● complete, ◐ active, ○ pending. Always show task list after modifications for immediate visual feedback. Limits: max 100 total tasks, max 25 per batch operation.',
   parametersJsonSchema: {
     type: 'object',
     properties: {
@@ -100,6 +101,7 @@ interface TaskList {
   tasks: Task[];
 }
 
+
 class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> {
   constructor(params: TaskToolParams) {
     super(params);
@@ -175,8 +177,8 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
           };
           
           taskList.tasks.push(newTask);
-          console.log(`[DEBUG] Adding task: ${newTask.name}`);
-          console.log(`[DEBUG] Task list now has ${taskList.tasks.length} tasks`);
+          debugLog(`Adding task: ${newTask.name}`);
+          debugLog(`Task list now has ${taskList.tasks.length} tasks`);
           await this.saveTaskList(tasksPath, taskList);
           
           // Auto-display updated task list 
@@ -210,8 +212,8 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
             t.name.toLowerCase().includes(task_name.toLowerCase()) && t.status !== 'complete'
           );
           
-          console.log(`[DEBUG] Looking for task to complete: "${task_name}"`);
-          console.log(`[DEBUG] Available tasks:`, taskList.tasks.map(t => `${t.name} (${t.status}, id: ${t.id})`));
+          debugLog(`Looking for task to complete: "${task_name}"`);
+          debugLog(`Available tasks:`, taskList.tasks.map(t => `${t.name} (${t.status}, id: ${t.id})`));
           
           if (!taskToComplete) {
             return {
@@ -269,8 +271,8 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
             t.name.toLowerCase().includes(task_name.toLowerCase())
           );
           
-          console.log(`[DEBUG] Looking for task to set in progress: "${task_name}"`);
-          console.log(`[DEBUG] Available tasks:`, taskList.tasks.map(t => `${t.name} (${t.status}, id: ${t.id})`));
+          debugLog(`Looking for task to set in progress: "${task_name}"`);
+          debugLog(`Available tasks:`, taskList.tasks.map(t => `${t.name} (${t.status}, id: ${t.id})`));
           
           if (!taskToProgress) {
             return {
@@ -359,8 +361,8 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
           };
 
         case 'list':
-          console.log(`[DEBUG] List action: Found ${taskList.tasks.length} tasks`);
-          console.log(`[DEBUG] Task list contents:`, taskList.tasks.map(t => `${t.name} (${t.status})`));
+          debugLog(`List action: Found ${taskList.tasks.length} tasks`);
+          debugLog(`Task list contents:`, taskList.tasks.map(t => `${t.name} (${t.status})`));
           
           const taskDisplay = this.formatTaskList(taskList);
           
@@ -370,8 +372,8 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
           const pending = taskList.tasks.filter(t => t.status === 'pending').length;
           
           return {
-            llmContent: `Task list displayed with visual indicators: ● complete (${completed}), 🟡 active (${inProgress}), ○ pending (${pending}). The visual display shows the current status - no need to repeat it.`,
-            returnDisplay: taskDisplay,
+            llmContent: `Task list displayed with visual indicators: ● complete (${completed}), ◐ active (${inProgress}), ○ pending (${pending}). The visual display shows the current status - no need to repeat it.`,
+            returnDisplay: taskDisplay, // String format for current UI
           };
 
         case 'show_progress':
@@ -613,7 +615,7 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
       
       // Check for obviously corrupted content
       if (!content.trim() || content.trim().length < 10) {
-        console.warn('Task file appears empty or too short, starting fresh');
+        debugLog('Task file appears empty or too short, starting fresh');
         return { tasks: [] };
       }
       
@@ -622,7 +624,7 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
       try {
         parsed = JSON.parse(content);
       } catch (jsonError) {
-        console.warn('JSON parsing failed, attempting to recover by cleaning content');
+        debugLog('JSON parsing failed, attempting to recover by cleaning content');
         
         // Try to find the last complete JSON structure
         const lastBraceIndex = content.lastIndexOf('}');
@@ -630,30 +632,30 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
           const cleanContent = content.substring(0, lastBraceIndex + 1);
           try {
             parsed = JSON.parse(cleanContent);
-            console.log('Successfully recovered from partial JSON corruption');
+            debugLog('Successfully recovered from partial JSON corruption');
           } catch {
-            console.warn('Recovery failed, starting fresh');
+            debugLog('Recovery failed, starting fresh');
             return { tasks: [] };
           }
         } else {
-          console.warn('No recoverable JSON structure found, starting fresh');
+          debugLog('No recoverable JSON structure found, starting fresh');
           return { tasks: [] };
         }
       }
       
-      console.log(`[DEBUG] Loading tasks from ${tasksPath}`);
-      console.log(`[DEBUG] Loaded ${parsed?.tasks?.length || 0} existing tasks`);
+      debugLog(`Loading tasks from ${tasksPath}`);
+      debugLog(`Loaded ${parsed?.tasks?.length || 0} existing tasks`);
       
       // Validate the structure
       if (parsed && typeof parsed === 'object' && Array.isArray(parsed.tasks)) {
         return parsed;
       } else {
-        console.warn('Invalid task file structure, starting fresh');
+        debugLog('Invalid task file structure, starting fresh');
         return { tasks: [] };
       }
     } catch (error) {
       // File doesn't exist, is corrupted, or has invalid JSON - start fresh
-      console.warn('Task file not found or corrupted, starting fresh:', error instanceof Error ? error.message : 'Unknown error');
+      debugLog('Task file not found or corrupted, starting fresh:', error instanceof Error ? error.message : 'Unknown error');
       return { tasks: [] };
     }
   }
@@ -665,7 +667,7 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
       const tempPath = `${tasksPath}.tmp.${Date.now()}.${Math.random().toString(36).substr(2, 9)}`;
       
       try {
-        console.log(`[DEBUG] Acquiring file lock for save operation`);
+        debugLog(`Acquiring file lock for save operation`);
         
         // Write to temporary file first
         await fs.writeFile(tempPath, content, 'utf-8');
@@ -686,7 +688,7 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
         // Atomic rename to final file
         await fs.rename(tempPath, tasksPath);
         
-        console.log(`[DEBUG] Successfully saved ${taskList.tasks.length} tasks atomically`);
+        debugLog(`Successfully saved ${taskList.tasks.length} tasks atomically`);
         
       } catch (error) {
         // Clean up temp file if it exists
@@ -696,7 +698,7 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
           // Ignore cleanup errors
         }
         
-        console.error('Failed to save tasks:', error);
+        debugLog('Failed to save tasks:', error);
         throw new Error(`Failed to save tasks: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     });
@@ -719,15 +721,19 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
           radioButton = '●';  // Solid filled circle - completed
           break;
         case 'in_progress': 
-          radioButton = '🟡'; // Yellow circle - active/in progress
+          radioButton = '◐'; // Half-filled circle - in progress (upstream style)
           break;
         case 'pending':
           radioButton = '○';  // Empty circle - not started
           break;
       }
       
-      // Single compact row per task
-      output += `${radioButton} ${task.name}\n`;
+      // Enhanced formatting with context if available
+      let taskLine = `${radioButton} ${task.name}`;
+      if (task.context && task.context.trim()) {
+        taskLine += ` — ${task.context.trim()}`;
+      }
+      output += `${taskLine}\n`;
     });
     
     return output.trim();
@@ -736,6 +742,7 @@ class TaskToolInvocation extends BaseToolInvocation<TaskToolParams, ToolResult> 
   private checkAllTasksComplete(taskList: TaskList): boolean {
     return taskList.tasks.length > 0 && taskList.tasks.every(task => task.status === 'complete');
   }
+
 
   private formatCompletionSummary(taskList: TaskList): string {
     const totalTasks = taskList.tasks.length;

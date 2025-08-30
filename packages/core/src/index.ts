@@ -18,6 +18,8 @@ export * from './core/turn.js';
 export * from './core/geminiRequest.js';
 export * from './core/coreToolScheduler.js';
 export * from './core/nonInteractiveToolExecutor.js';
+export * from './core/modelOverrideManager.js';
+export * from './core/providerAuthManager.js';
 
 export * from './code_assist/codeAssist.js';
 export * from './code_assist/oauth2.js';
@@ -43,6 +45,7 @@ export * from './utils/textUtils.js';
 export * from './utils/formatters.js';
 export * from './utils/filesearch/fileSearch.js';
 export * from './utils/errorParsing.js';
+export * from './utils/debugLog.js';
 
 // Export services
 export * from './services/fileDiscoveryService.js';

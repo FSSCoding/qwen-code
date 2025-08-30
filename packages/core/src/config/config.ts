@@ -6,11 +6,14 @@
 
 import * as path from 'node:path';
 import process from 'node:process';
+import { execSync } from 'node:child_process';
 import {
   AuthType,
   ContentGeneratorConfig,
   createContentGeneratorConfig,
 } from '../core/contentGenerator.js';
+import { getModelOverrideManager } from '../core/modelOverrideManager.js';
+import { setDebugContext, debugLog } from '../utils/debugLog.js';
 import { PromptRegistry } from '../prompts/prompt-registry.js';
 import { ToolRegistry } from '../tools/tool-registry.js';
 import { LSTool } from '../tools/ls.js';
@@ -36,7 +39,7 @@ import { WebscraperTool } from '../tools/webscraperTool.js';
 import { Flake8Tool } from '../tools/flake8Tool.js';
 import { BlackTool } from '../tools/blackTool.js';
 import { ProjectStructureTool } from '../tools/projectStructureTool.js';
-import { ModelSwitcherTool } from '../tools/modelSwitcherWorking.js';
+import { ModelManagerTool, setGlobalConfigReference } from '../tools/modelManager.js';
 import { GeminiClient } from '../core/client.js';
 import { FileDiscoveryService } from '../services/fileDiscoveryService.js';
 import { GitService } from '../services/gitService.js';
@@ -273,6 +276,7 @@ export class Config {
   private readonly cwd: string;
   private readonly bugCommand: BugCommandSettings | undefined;
   private readonly model: string;
+  private runtimeModel: string | null = null;
   private readonly extensionContextFilePaths: string[];
   private readonly noBrowser: boolean;
   private readonly folderTrustFeature: boolean;
@@ -315,6 +319,8 @@ export class Config {
   private initialized: boolean = false;
 
   constructor(params: ConfigParameters) {
+    debugLog('NEW Config instance created with model:', params.model);
+    debugLog('Config constructor call stack:', new Error().stack);
     this.sessionId = params.sessionId;
     this.embeddingModel =
       params.embeddingModel ?? DEFAULT_GEMINI_EMBEDDING_MODEL;
@@ -325,6 +331,7 @@ export class Config {
       params.includeDirectories ?? [],
     );
     this.debugMode = params.debugMode;
+    setDebugContext(this);
     this.question = params.question;
     this.fullContext = params.fullContext ?? false;
     this.coreTools = params.coreTools;
@@ -408,6 +415,11 @@ export class Config {
     } else {
       console.log('Data collection is disabled.');
     }
+    
+    // SMOKING GUN FIX: Register this Config instance with ModelOverrideManager
+    const modelOverrideManager = getModelOverrideManager();
+    modelOverrideManager.registerConfig(this);
+    debugLog('Config instance registered with ModelOverrideManager');
   }
 
   /**
@@ -428,6 +440,8 @@ export class Config {
   }
 
   async refreshAuth(authMethod: AuthType) {
+    debugLog('refreshAuth called with authMethod:', authMethod, 'current model:', this.getModel());
+    debugLog('refreshAuth call stack:', new Error().stack);
     // Save the current conversation history before creating a new client
     let existingHistory: Content[] = [];
     if (this.geminiClient && this.geminiClient.isInitialized()) {
@@ -480,12 +494,31 @@ export class Config {
   }
 
   getModel(): string {
-    return this.contentGeneratorConfig?.model || this.model;
+    const result = this.contentGeneratorConfig?.model || this.runtimeModel || this.model;
+    debugLog('getModel() called - contentGeneratorConfig.model:', this.contentGeneratorConfig?.model, 'runtimeModel:', this.runtimeModel, 'base model:', this.model, 'result:', result);
+    return result;
   }
 
   setModel(newModel: string): void {
+    // Update the runtime model property so it persists across contentGeneratorConfig recreations
+    this.runtimeModel = newModel;
+    
+    // Also update the current contentGeneratorConfig if it exists
     if (this.contentGeneratorConfig) {
       this.contentGeneratorConfig.model = newModel;
+    }
+  }
+
+  getRuntimeModel(): string | null {
+    return this.runtimeModel;
+  }
+
+  setRuntimeModel(model: string): void {
+    this.runtimeModel = model;
+    
+    // Also update the current contentGeneratorConfig if it exists
+    if (this.contentGeneratorConfig) {
+      this.contentGeneratorConfig.model = model;
     }
   }
 
@@ -744,6 +777,23 @@ export class Config {
     return this.tavilyApiKey;
   }
 
+  // TTS system detection
+  hasTTSSystem(): boolean {
+    try {
+      // Check if tts-speak command is available
+      execSync('tts-speak --version', { stdio: 'ignore', timeout: 2000 });
+      return true;
+    } catch {
+      // Also check for tts-info as alternative detection
+      try {
+        execSync('tts-info', { stdio: 'ignore', timeout: 2000 });
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
   getIdeClient(): IdeClient {
     return this.ideClient;
   }
@@ -832,6 +882,9 @@ export class Config {
 
   async createToolRegistry(): Promise<ToolRegistry> {
     const registry = new ToolRegistry(this);
+    
+    // Set global config reference for model switching
+    setGlobalConfigReference(this);
 
     // helper to create & register core tools that are enabled
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -876,19 +929,22 @@ export class Config {
     registerCoreTool(ReadManyFilesTool, this);
     registerCoreTool(ShellTool, this);
     registerCoreTool(MemoryTool);
-    // Register RAG, TTS, Task, and Webscraper tools for enhanced local integration
+    // Register RAG, Task, and Webscraper tools for enhanced local integration
     registerCoreTool(RAGTool);
     registerCoreTool(RAGIndexTool);
-    registerCoreTool(TTSTool);
     registerCoreTool(TaskTool);
     registerCoreTool(WebscraperTool);
+    // Conditionally register TTS tool only if TTS system is available
+    if (this.hasTTSSystem()) {
+      registerCoreTool(TTSTool);
+    }
     // Register Python development tools for linting and formatting
     registerCoreTool(Flake8Tool);
     registerCoreTool(BlackTool);
     // Register IDE-like project analysis tools
     registerCoreTool(ProjectStructureTool);
-    // Register lightning-fast model switching system
-    registerCoreTool(ModelSwitcherTool);
+    // Register professional model management system
+    registerCoreTool(ModelManagerTool);
     // Conditionally register web search tool only if Tavily API key is set
     if (this.getTavilyApiKey()) {
       registerCoreTool(WebSearchTool, this);

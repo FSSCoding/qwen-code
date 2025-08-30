@@ -7,6 +7,7 @@
 import { BaseTool, Kind, ToolResult } from './tools.js';
 import { SchemaValidator } from '../utils/schemaValidator.js';
 import { getErrorMessage } from '../utils/errors.js';
+import { debugLog } from '../utils/debugLog.js';
 import { spawn } from 'node:child_process';
 
 /**
@@ -223,7 +224,7 @@ export class WebscraperTool extends BaseTool<
           const chunk = data.toString();
           progressOutput += chunk;
           // Stream progress messages to console in real-time
-          console.log(chunk.toString().trim());
+          debugLog(chunk.toString().trim());
         });
 
         // Handle process completion
@@ -276,7 +277,7 @@ export class WebscraperTool extends BaseTool<
 
     } catch (error: unknown) {
       const errorMessage = `Webscraper execution failed: ${getErrorMessage(error)}`;
-      console.error(errorMessage, error);
+      debugLog(errorMessage, error);
       return {
         llmContent: `Error: ${errorMessage}`,
         returnDisplay: `Webscraper operation failed.`,

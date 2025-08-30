@@ -12,6 +12,7 @@ import {
 } from './tools.js';
 import { FunctionDeclaration } from '@google/genai';
 import { spawn } from 'child_process';
+import { debugLog } from '../utils/debugLog.js';
 
 const flake8ToolSchemaData: FunctionDeclaration = {
   name: 'flake8_lint',
@@ -140,7 +141,7 @@ class Flake8ToolInvocation extends BaseToolInvocation<
       // Add target path
       args.push(target);
 
-      console.log(`[DEBUG] Running flake8 with args: ${args.join(' ')}`);
+      debugLog(`Running flake8 with args: ${args.join(' ')}`);
 
       // Execute flake8
       const { stdout, code } = await this.runCommand('python3', ['-m', 'flake8', ...args]);

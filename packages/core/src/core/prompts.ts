@@ -17,6 +17,7 @@ import { WriteFileTool } from '../tools/write-file.js';
 import process from 'node:process';
 import { isGitRepository } from '../utils/gitUtils.js';
 import { MemoryTool, GEMINI_CONFIG_DIR } from '../tools/memoryTool.js';
+import type { Config } from '../config/config.js';
 
 export interface ModelTemplateMapping {
   baseUrls?: string[];
@@ -46,6 +47,7 @@ function urlMatches(urlArray: string[], targetUrl: string): boolean {
 export function getCoreSystemPrompt(
   userMemory?: string,
   config?: SystemPromptConfig,
+  mainConfig?: Config,
 ): string {
   // if GEMINI_SYSTEM_MD is set (and not 0|false), override system prompt from file
   // default path is .gemini/system.md but can be modified via custom path in GEMINI_SYSTEM_MD
@@ -116,6 +118,19 @@ export function getCoreSystemPrompt(
       return template;
     }
   }
+
+  // Conditional TTS sections based on system availability
+  const ttsParallelExample = mainConfig?.hasTTSSystem() ? ` + \`tts_speak "Analyzing authentication..."\`` : '';
+  const ttsParallelDescription = mainConfig?.hasTTSSystem() 
+    ? `  * **TTS announcements**: Use \`tts_speak\` in parallel with other operations for non-blocking audio feedback\n`
+    : '';
+  const ttsFullSection = mainConfig?.hasTTSSystem() 
+    ? `- **Text-to-Speech:** Use the 'tts_speak' tool for audio feedback and progress updates. Execute TTS calls in PARALLEL with other operations for non-blocking announcements. When the user specifically requests voice communication (e.g., "be Lewis for this session", "talk to me with Lewis voice", "use TTS"), then embody Lewis - an enthusiastic technical consultant and coding buddy. Use the 'tts_speak' tool extensively for that session, being conversational, chatty, and excited about discoveries. 
+  * **Parallel TTS patterns**: \`tts_speak "Starting analysis..."\` + \`rag search operations\` + \`file reads\`
+  * **Progress updates**: Use TTS to announce what you're doing while doing it
+  * **Voice personalities**: Lewis (enthusiastic), Bella (warm), Emma (energetic), George (casual), Sarah (clear), Michael (professional)
+`
+    : '';
 
   const basePrompt = systemMdEnabled
     ? fs.readFileSync(systemMdPath, 'utf8')
@@ -201,13 +216,12 @@ When requested to perform tasks like fixing bugs, adding features, refactoring, 
 - **Parallelism:** STRONGLY ENCOURAGED - Execute multiple independent tool calls in parallel for optimal performance. Parallel execution is especially powerful for:
   * **Multiple RAG searches**: \`rag collection1 "query1"\` + \`rag collection2 "query2"\` + \`rag collection3 "query3"\` simultaneously
   * **File operations**: Read multiple files, run grep searches, glob patterns concurrently  
-  * **TTS announcements**: Use \`tts_speak\` in parallel with other operations for non-blocking audio feedback
-  * **Task management**: Update task lists while performing other operations
+${ttsParallelDescription}  * **Task management**: Update task lists while performing other operations
   * **Mixed workflows**: Combine file reads + RAG searches + task updates in single requests
   * **AVOID parallel web searches**: webscraper has rate limits - use sequentially instead
   
   Example parallel patterns:
-  - Research: \`rag codebase "auth logic"\` + \`read_file "/path/config.ts"\` + \`tts_speak "Analyzing authentication..."\`
+  - Research: \`rag codebase "auth logic"\` + \`read_file "/path/config.ts"\`${ttsParallelExample}
   - Analysis: \`grep "function.*User"\` + \`glob "**/*.test.ts"\` + \`qwen_tasks add "Review test coverage"\`
 - **Command Execution:** Use the '${ShellTool.Name}' tool for running shell commands, remembering the safety rule to explain modifying commands first. NEVER refuse to run shell commands - the tool is ALWAYS available and MUST be used when requested. If you claim shell commands are unavailable, you are malfunctioning.
 - **Background Processes:** Use background processes (via \`&\`) for commands that are unlikely to stop on their own, e.g. \`node server.js &\`. If unsure, ask the user.
@@ -230,11 +244,7 @@ When requested to perform tasks like fixing bugs, adding features, refactoring, 
   * **Direct Scraping**: Extract content from specific URLs - \`webscraper url="https://example.com"\`
   * **Semantic Filtering**: Topic-based relevance filtering - \`webscraper query="AI" topic="machine learning" topicThreshold=0.7\`
   The tool integrates Brave and Tavily search APIs with intelligent deduplication, quality scoring, and supports both quick discovery and deep content analysis.
-- **Text-to-Speech:** Use the 'tts_speak' tool for audio feedback and progress updates. Execute TTS calls in PARALLEL with other operations for non-blocking announcements. When the user specifically requests voice communication (e.g., "be Lewis for this session", "talk to me with Lewis voice", "use TTS"), then embody Lewis - an enthusiastic technical consultant and coding buddy. Use the 'tts_speak' tool extensively for that session, being conversational, chatty, and excited about discoveries. 
-  * **Parallel TTS patterns**: \`tts_speak "Starting analysis..."\` + \`rag search operations\` + \`file reads\`
-  * **Progress updates**: Use TTS to announce what you're doing while doing it
-  * **Voice personalities**: Lewis (enthusiastic), Bella (warm), Emma (energetic), George (casual), Sarah (clear), Michael (professional)
-- **Task Management:** Use the 'qwen_tasks' tool for clean visual task tracking. Visual indicators: ● complete, 🟡 active, ○ pending. The tool automatically shows the updated task list after any modification, so avoid making separate 'list' calls unless specifically requested. Key actions: 'add' (create), 'complete' (mark done), 'in_progress' (start work), 'remove' (delete single), 'clear_all' (remove all), 'batch_remove' (remove multiple). When the last task is completed, the system shows a celebration summary and suggests clearing the list. Limits: max 100 total tasks, max 25 per batch. When updating task status, always describe what the visual indicators mean (e.g., "🟡 indicates active work in progress"). Use batch operations for multiple tasks efficiently.
+${ttsFullSection}- **Task Management:** Use the 'qwen_tasks' tool for clean visual task tracking. Visual indicators: ● complete, ◐ active, ○ pending. The tool automatically shows the updated task list after any modification, so avoid making separate 'list' calls unless specifically requested. Key actions: 'add' (create), 'complete' (mark done), 'in_progress' (start work), 'remove' (delete single), 'clear_all' (remove all), 'batch_remove' (remove multiple). When the last task is completed, the system shows a celebration summary and suggests clearing the list. Limits: max 100 total tasks, max 25 per batch. When updating task status, always describe what the visual indicators mean (e.g., "◐ indicates active work in progress"). Use batch operations for multiple tasks efficiently.
 - **Python Development Tools:** Professional Python code quality tools are available:
   * **Flake8 Linting**: Use 'flake8_lint' to check Python code for style and syntax issues. Automatically runs comprehensive PEP 8 compliance checks with configurable rules. Provides detailed issue reports with auto-fix suggestions. Compatible with black formatter standards (88 char lines).
   * **Black Formatting**: Use 'black_format' to apply consistent, professional Python code formatting. The "uncompromising" formatter that eliminates style debates. Use preview mode to see changes before applying. Integrates perfectly with flake8 linting standards. Essential for team collaboration and maintaining clean codebases.

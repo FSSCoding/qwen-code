@@ -13,6 +13,7 @@ import {
 import { FunctionDeclaration } from '@google/genai';
 import { spawn } from 'child_process';
 import * as fs from 'fs/promises';
+import { debugLog } from '../utils/debugLog.js';
 
 const blackToolSchemaData: FunctionDeclaration = {
   name: 'black_format',
@@ -184,7 +185,7 @@ class BlackToolInvocation extends BaseToolInvocation<BlackToolParams, ToolResult
       // Add target path
       args.push(target);
 
-      console.log(`[DEBUG] Running black with args: ${args.join(' ')}`);
+      debugLog(`Running black with args: ${args.join(' ')}`);
 
       // Execute black
       const { stdout, stderr, code } = await this.runCommand('python3', ['-m', 'black', ...args]);

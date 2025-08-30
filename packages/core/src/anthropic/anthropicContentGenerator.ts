@@ -1,135 +1,220 @@
 /**
  * @license
- * Copyright 2025 Anthropic
+ * Copyright 2025 FSS Coding
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { OpenAIContentGenerator } from '../core/openaiContentGenerator.js';
-import { IAnthropicOAuth2Client, AnthropicCredentials } from './anthropicOAuth2.js';
-import { Config } from '../config/config.js';
+/**
+ * Native Anthropic Content Generator
+ * 
+ * This implementation replaces the previous inheritance-based approach with
+ * a native Anthropic API client that speaks Anthropic's protocol directly.
+ * 
+ * Key differences from the old implementation:
+ * - Uses native Anthropic HTTP client instead of OpenAI SDK
+ * - Handles format conversion between Gemini and Anthropic formats  
+ * - Implements proper Anthropic authentication headers
+ * - Uses correct Anthropic endpoints and response parsing
+ */
+
+import {
+  ContentGenerator,
+  ContentGeneratorConfig
+} from '../core/contentGenerator.js';
 import {
   GenerateContentParameters,
   GenerateContentResponse,
   CountTokensParameters,
   CountTokensResponse,
   EmbedContentParameters,
-  EmbedContentResponse,
+  EmbedContentResponse
 } from '@google/genai';
-import { ContentGeneratorConfig } from '../core/contentGenerator.js';
+import { Config } from '../config/config.js';
+import { IAnthropicOAuth2Client } from './anthropicOAuth2.js';
+import { 
+  AnthropicHttpClient, 
+  AnthropicApiError
+} from './anthropicHttpClient.js';
+import { GeminiAnthropicConverter } from './anthropicFormatConverter.js';
 
-// Default Claude Code Max API base URL - uses Claude Code Max endpoint
-const ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
-
-/**
- * Anthropic Content Generator that uses Anthropic OAuth tokens with automatic refresh
- * Follows the same pattern as QwenContentGenerator
- */
-export class AnthropicContentGenerator extends OpenAIContentGenerator {
-  private anthropicClient: IAnthropicOAuth2Client;
+export class AnthropicContentGenerator implements ContentGenerator {
+  private httpClient: AnthropicHttpClient;
+  private tokenManager: IAnthropicOAuth2Client;
+  // Note: config parameter kept for future use
+  private readonly baseUrl: string;
 
   constructor(
-    anthropicClient: IAnthropicOAuth2Client,
+    tokenManager: IAnthropicOAuth2Client,
     contentGeneratorConfig: ContentGeneratorConfig,
-    config: Config,
+    config: Config
   ) {
-    // Initialize with empty API key, we'll override it dynamically
-    super(contentGeneratorConfig, config);
-    this.anthropicClient = anthropicClient;
+    this.tokenManager = tokenManager;
+    this.baseUrl = 'https://api.anthropic.com/v1';
+    
+    // Initialize HTTP client with placeholder token
+    // Real token will be set dynamically in executeWithCredentialManagement
+    this.httpClient = new AnthropicHttpClient({
+      apiKey: 'placeholder', // Will be replaced with real token
+      baseUrl: this.baseUrl,
+      timeout: 60000, // Default timeout
+      userAgent: 'QwenCode-Claude-Integration/1.0'
+    });
 
-    // Set Anthropic base URL
-    this.client.baseURL = ANTHROPIC_BASE_URL;
+    console.log('🚀 Native AnthropicContentGenerator initialized');
   }
 
   /**
-   * Override error logging behavior to suppress auth errors during token refresh
+   * Generate content using native Anthropic API
    */
-  protected override shouldSuppressErrorLogging(
-    error: unknown,
-    _request: GenerateContentParameters,
-  ): boolean {
-    // Suppress logging for authentication errors that we handle with token refresh
-    return this.isAuthError(error);
-  }
-
-  /**
-   * Get valid token from the Anthropic OAuth client
-   */
-  private async getValidToken(): Promise<string> {
-    try {
-      const tokenResult = await this.anthropicClient.getAccessToken();
+  async generateContent(
+    request: GenerateContentParameters,
+    userPromptId: string
+  ): Promise<GenerateContentResponse> {
+    console.log('🔍 AnthropicContentGenerator.generateContent called');
+    console.log('🔗 Target baseURL:', this.baseUrl);
+    
+    return this.executeWithCredentialManagement(async () => {
+      // Convert Gemini format to Anthropic format
+      const anthropicRequest = GeminiAnthropicConverter.geminiToAnthropic(request);
       
-      if (!tokenResult.token) {
-        throw new Error('No access token available');
-      }
+      // Validate the converted request
+      GeminiAnthropicConverter.validateAnthropicRequest(anthropicRequest);
+      
+      console.log('📡 Making native Anthropic API call');
+      console.log('📋 Anthropic request:', {
+        model: anthropicRequest.model,
+        max_tokens: anthropicRequest.max_tokens,
+        message_count: anthropicRequest.messages.length,
+        has_system: !!anthropicRequest.system
+      });
+      
+      // Make native Anthropic API call
+      const anthropicResponse = await this.httpClient.createMessage(anthropicRequest);
+      
+      console.log('✅ Native Anthropic API response received');
+      console.log('📄 Response details:', {
+        id: anthropicResponse.id,
+        model: anthropicResponse.model,
+        stop_reason: anthropicResponse.stop_reason,
+        usage: anthropicResponse.usage
+      });
+      
+      // Convert Anthropic response back to Gemini format
+      const geminiResponse = GeminiAnthropicConverter.anthropicToGemini(anthropicResponse, false);
+      
+      return geminiResponse;
+    });
+  }
 
-      return tokenResult.token;
+  /**
+   * Generate streaming content using native Anthropic API
+   */
+  async generateContentStream(
+    request: GenerateContentParameters,
+    userPromptId: string
+  ): Promise<AsyncGenerator<GenerateContentResponse>> {
+    console.log('🔍 AnthropicContentGenerator.generateContentStream called');
+    console.log('🔗 Target baseURL:', this.baseUrl);
+    
+    return this.executeWithCredentialManagement(async () => {
+      // Convert Gemini format to Anthropic format
+      const anthropicRequest = GeminiAnthropicConverter.geminiToAnthropic(request);
+      
+      // Validate the converted request
+      GeminiAnthropicConverter.validateAnthropicRequest(anthropicRequest);
+      
+      console.log('📡 Making native Anthropic streaming API call');
+      console.log('📋 Anthropic streaming request:', {
+        model: anthropicRequest.model,
+        max_tokens: anthropicRequest.max_tokens,
+        message_count: anthropicRequest.messages.length,
+        has_system: !!anthropicRequest.system
+      });
+      
+      // Make native Anthropic streaming API call
+      const anthropicStream = await this.httpClient.createMessageStream(anthropicRequest);
+      
+      console.log('✅ Native Anthropic streaming response started');
+      
+      // Convert Anthropic stream to Gemini stream
+      return this.convertAnthropicStreamToGemini(anthropicStream);
+    });
+  }
+
+  /**
+   * Convert Anthropic stream to async generator of Gemini responses
+   */
+  private async *convertAnthropicStreamToGemini(
+    anthropicStream: AsyncGenerator<any>
+  ): AsyncGenerator<GenerateContentResponse> {
+    try {
+      for await (const chunk of anthropicStream) {
+        const geminiChunk = GeminiAnthropicConverter.anthropicStreamToGemini(chunk);
+        if (geminiChunk) {
+          yield geminiChunk;
+        }
+      }
     } catch (error) {
-      console.warn('Failed to get token from Anthropic client:', error);
-      throw new Error(
-        'Failed to obtain valid Anthropic access token. Please re-authenticate.',
-      );
+      console.error('❌ Error in Anthropic stream conversion:', error);
+      throw error;
     }
   }
 
   /**
-   * Execute an operation with automatic credential management and retry logic.
-   * This method handles:
-   * - Dynamic token retrieval
-   * - Temporary client configuration updates
-   * - Automatic restoration of original configuration
-   * - Retry logic on authentication errors with token refresh
-   *
-   * @param operation - The operation to execute with updated client configuration
-   * @param restoreOnCompletion - Whether to restore original config after operation completes
-   * @returns The result of the operation
+   * Execute operation with automatic credential management and retry logic
    */
   private async executeWithCredentialManagement<T>(
-    operation: () => Promise<T>,
-    restoreOnCompletion: boolean = true,
+    operation: () => Promise<T>
   ): Promise<T> {
-    // Attempt the operation with credential management and retry logic
     const attemptOperation = async (): Promise<T> => {
-      const token = await this.getValidToken();
-
-      // Store original configuration
-      const originalApiKey = this.client.apiKey;
-      const originalBaseURL = this.client.baseURL;
-
-      // Apply dynamic configuration
-      this.client.apiKey = token;
-      this.client.baseURL = ANTHROPIC_BASE_URL;
-
+      // Get fresh token from token manager
+      console.log('🔑 Getting fresh token from token manager');
+      const tokenResult = await this.tokenManager.getAccessToken();
+      
+      if (!tokenResult.token) {
+        throw new Error('No access token available from token manager');
+      }
+      
+      console.log('✅ Got valid token, updating HTTP client');
+      
+      // Update HTTP client with fresh token
+      this.httpClient.updateApiKey(tokenResult.token);
+      
       try {
+        console.log('🔄 Executing operation with token...');
         const result = await operation();
-
-        // For streaming operations, we may need to keep the configuration active
-        if (restoreOnCompletion) {
-          this.client.apiKey = originalApiKey;
-          this.client.baseURL = originalBaseURL;
-        }
-
+        console.log('✅ Operation completed successfully');
         return result;
       } catch (error) {
-        // Always restore on error
-        this.client.apiKey = originalApiKey;
-        this.client.baseURL = originalBaseURL;
+        console.error('❌ Operation failed:', error);
+        if (error instanceof Error) {
+          console.error('❌ Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack?.split('\n').slice(0, 3).join('\n')
+          });
+        }
         throw error;
       }
     };
 
-    // Execute with retry logic for auth errors
     try {
       return await attemptOperation();
     } catch (error) {
+      // Retry once on authentication errors
       if (this.isAuthError(error)) {
+        console.warn('🔄 Authentication error detected, retrying with fresh token');
+        console.warn('🔄 Original error:', error);
         try {
-          // Force a fresh token and retry the operation once
-          await this.getValidToken();
-          // Retry the operation once with fresh credentials
+          // Force token refresh and retry
+          console.log('🔄 Attempting to get fresh token...');
+          const refreshResult = await this.tokenManager.getAccessToken(); 
+          console.log('🔄 Refresh result:', { hasToken: !!refreshResult.token });
           return await attemptOperation();
-        } catch (_refreshError) {
+        } catch (retryError) {
+          console.error('❌ Retry attempt failed:', retryError);
           throw new Error(
-            'Failed to obtain valid Anthropic access token. Please re-authenticate.',
+            'Failed to obtain valid Anthropic access token after retry. Please re-authenticate with: claude login'
           );
         }
       }
@@ -138,105 +223,89 @@ export class AnthropicContentGenerator extends OpenAIContentGenerator {
   }
 
   /**
-   * Override to use dynamic token with automatic retry
-   */
-  override async generateContent(
-    request: GenerateContentParameters,
-    userPromptId: string,
-  ): Promise<GenerateContentResponse> {
-    return this.executeWithCredentialManagement(() =>
-      super.generateContent(request, userPromptId),
-    );
-  }
-
-  /**
-   * Override to use dynamic token with automatic retry.
-   * Note: For streaming, the client configuration is not restored immediately
-   * since the generator may continue to be used after this method returns.
-   */
-  override async generateContentStream(
-    request: GenerateContentParameters,
-    userPromptId: string,
-  ): Promise<AsyncGenerator<GenerateContentResponse>> {
-    return this.executeWithCredentialManagement(
-      () => super.generateContentStream(request, userPromptId),
-      false, // Don't restore immediately for streaming
-    );
-  }
-
-  /**
-   * Override to use dynamic token with automatic retry
-   */
-  override async countTokens(
-    request: CountTokensParameters,
-  ): Promise<CountTokensResponse> {
-    return this.executeWithCredentialManagement(() =>
-      super.countTokens(request),
-    );
-  }
-
-  /**
-   * Override to use dynamic token with automatic retry
-   */
-  override async embedContent(
-    request: EmbedContentParameters,
-  ): Promise<EmbedContentResponse> {
-    return this.executeWithCredentialManagement(() =>
-      super.embedContent(request),
-    );
-  }
-
-  /**
-   * Check if an error is related to authentication/authorization
+   * Check if error is authentication-related
    */
   private isAuthError(error: unknown): boolean {
-    if (!error) return false;
+    if (error instanceof AnthropicApiError) {
+      return error.isAuthError;
+    }
+    
+    // Fallback check for other error types
+    const errorMessage = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    return errorMessage.includes('unauthorized') || 
+           errorMessage.includes('forbidden') ||
+           errorMessage.includes('authentication') ||
+           errorMessage.includes('invalid api key') ||
+           errorMessage.includes('access token');
+  }
 
-    const errorMessage =
-      error instanceof Error
-        ? error.message.toLowerCase()
-        : String(error).toLowerCase();
-
-    // Define a type for errors that might have status or code properties
-    const errorWithCode = error as {
-      status?: number | string;
-      code?: number | string;
+  /**
+   * Count tokens (approximation since Anthropic doesn't provide this API)
+   */
+  async countTokens(request: CountTokensParameters): Promise<CountTokensResponse> {
+    // Anthropic doesn't provide a token counting API
+    // Provide rough approximation based on text length
+    
+    // Handle ContentListUnion which can be Content[] or string
+    let text = '';
+    if (typeof request.contents === 'string') {
+      text = request.contents;
+    } else if (Array.isArray(request.contents)) {
+      text = request.contents.map((content: any) => 
+        content.parts?.map((part: any) => 'text' in part ? part.text : '').join('')
+      ).join('') || '';
+    }
+    
+    // Rough approximation: 1 token ≈ 4 characters for English text
+    // This is not accurate but gives a ballpark estimate
+    const estimatedTokens = Math.ceil(text.length / 4);
+    
+    console.log(`📊 Token count estimation: ${estimatedTokens} tokens for ${text.length} characters`);
+    
+    return {
+      totalTokens: estimatedTokens
     };
-    const errorCode = errorWithCode?.status || errorWithCode?.code;
+  }
 
-    return (
-      errorCode === 401 ||
-      errorCode === 403 ||
-      errorCode === '401' ||
-      errorCode === '403' ||
-      errorMessage.includes('unauthorized') ||
-      errorMessage.includes('forbidden') ||
-      errorMessage.includes('invalid api key') ||
-      errorMessage.includes('invalid access token') ||
-      errorMessage.includes('token expired') ||
-      errorMessage.includes('authentication') ||
-      errorMessage.includes('access denied') ||
-      (errorMessage.includes('token') && errorMessage.includes('expired'))
+  /**
+   * Embed content (not supported by Anthropic API)
+   */
+  async embedContent(request: EmbedContentParameters): Promise<EmbedContentResponse> {
+    throw new Error(
+      'Embedding is not supported by Anthropic API. ' +
+      'Use a different provider for embedding functionality.'
     );
   }
 
   /**
-   * Get the current cached token (may be expired)
+   * Get current token (for debugging)
    */
   getCurrentToken(): string | null {
-    const credentials = this.anthropicClient.getCredentials();
+    const credentials = this.tokenManager.getCredentials();
     return credentials?.access_token || null;
   }
 
   /**
-   * Clear the cached token
+   * Clear cached credentials
    */
-  clearToken(): void {
-    // Reset the client credentials
-    const emptyCredentials: AnthropicCredentials = {
+  clearCredentials(): void {
+    // Let token manager handle credential clearing
+    const emptyCredentials = {
       access_token: '',
-      token_type: 'Bearer',
+      token_type: 'Bearer'
     };
-    this.anthropicClient.setCredentials(emptyCredentials);
+    this.tokenManager.setCredentials(emptyCredentials);
+    console.log('🧹 Cleared cached credentials');
+  }
+
+  /**
+   * Get client configuration for debugging
+   */
+  getClientConfig(): any {
+    return {
+      baseUrl: this.baseUrl,
+      httpClientConfig: this.httpClient.getConfig(),
+      hasToken: !!this.getCurrentToken()
+    };
   }
 }

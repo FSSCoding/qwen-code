@@ -86,10 +86,16 @@ export function createContentGeneratorConfig(
 ): ContentGeneratorConfig {
   debugLog('createContentGeneratorConfig called - authType:', authType, 'config.getModel():', config.getModel());
   
-  // SMOKING GUN FIX: Use Config's authType if it's more specific than the passed authType
+  // CRITICAL BUG FIX: Prioritize config authType when it exists and is valid
+  // The config authType is more reliable than the passed authType in cases where
+  // the provider resolution system has issues
   const configAuthType = (config as any).authType;
   const effectiveAuthType = configAuthType || authType;
-  debugLog('createContentGeneratorConfig - using effectiveAuthType:', effectiveAuthType, 'from config:', configAuthType, 'passed:', authType);
+  console.log(`🔧 createContentGeneratorConfig DEBUG:`);
+  console.log(`   📥 Input authType (provider-resolved): ${authType}`);
+  console.log(`   📁 Config authType (stale): ${configAuthType}`);
+  console.log(`   ✅ Effective authType selected: ${effectiveAuthType}`);
+  debugLog('createContentGeneratorConfig - using effectiveAuthType:', effectiveAuthType, 'passed authType (provider-resolved):', authType, 'config authType (stale):', configAuthType);
   
   // Log to model switch file for debugging
   import('../utils/modelSwitchLogger.js').then(({ logModelSwitch }) => {
@@ -259,41 +265,59 @@ export async function createContentGenerator(
 
 
   if (config.authType === AuthType.ANTHROPIC_OAUTH) {
-    console.log('🎯 ContentGenerator: ANTHROPIC_OAUTH route detected - creating AnthropicContentGenerator');
-    // Import required classes dynamically
-    const { getAnthropicOAuthClient } = await import(
-      '../anthropic/anthropicOAuth2.js'
-    );
-    const { AnthropicContentGenerator } = await import(
-      '../anthropic/anthropicContentGenerator.js'
+    console.log('🎯 ContentGenerator: ANTHROPIC_OAUTH route detected - creating ClaudeSubprocessGenerator');
+    
+    // Import the subprocess generator
+    const { ClaudeSubprocessGenerator } = await import(
+      '../anthropic/claudeSubprocessGenerator.js'
     );
 
     try {
-      console.log('🔑 ContentGenerator: Calling getAnthropicOAuthClient...');
-      // Get the Anthropic OAuth client with token management
-      const anthropicTokenManager = await getAnthropicOAuthClient(gcConfig);
+      console.log('🔍 ContentGenerator: Validating Claude CLI availability...');
       
-      // Get the access token from the OAuth client
-      const tokenResult = await anthropicTokenManager.getAccessToken();
-      if (!tokenResult.token) {
-        throw new Error('No valid Claude access token available');
+      // Check if Claude CLI is available
+      const cliInfo = await ClaudeSubprocessGenerator.getCliInfo();
+      if (!cliInfo.available) {
+        throw new Error('Claude CLI not found. Install with: npm install -g @anthropics/claude');
       }
       
-      // Update the config with the Claude access token
-      const anthropicConfig = {
-        ...config,
-        apiKey: tokenResult.token,
-        baseUrl: 'https://api.anthropic.com/v1'
-      };
+      console.log('✅ Claude CLI detected:', {
+        version: cliInfo.version,
+        authenticated: cliInfo.authenticated
+      });
       
-      console.log('✅ ContentGenerator: Successfully created AnthropicContentGenerator');
-
-      // Create the content generator with the token-enabled config
-      return new AnthropicContentGenerator(anthropicTokenManager, anthropicConfig, gcConfig);
+      // Create the subprocess generator
+      const generator = new ClaudeSubprocessGenerator(
+        config,
+        gcConfig,
+        {
+          model: config.model?.includes('opus') ? 'opus' : 'sonnet', // Auto-detect from model name
+          timeout: 120000 // 2 minutes timeout
+        }
+      );
+      
+      console.log('✅ ContentGenerator: Successfully created ClaudeSubprocessGenerator');
+      return generator;
     } catch (error) {
-      console.error('❌ ContentGenerator: Failed to create Anthropic OAuth client:', error);
+      console.error('❌ ContentGenerator: Failed to create Claude subprocess generator:', error);
+      
+      // Provide helpful error messages
+      if (error instanceof Error) {
+        if (error.message.includes('Claude CLI not found')) {
+          throw new Error(
+            'Claude CLI is required for Claude Code Max. Install it with:\n' +
+            'npm install -g @anthropics/claude\n' +
+            'Then authenticate with: claude login'
+          );
+        } else if (error.message.includes('authentication')) {
+          throw new Error(
+            'Claude authentication required. Run: claude login'
+          );
+        }
+      }
+      
       throw new Error(
-        `Failed to initialize Anthropic OAuth: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to initialize Claude subprocess: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

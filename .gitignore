@@ -43,3 +43,10 @@ packages/vscode-ide-companion/*.vsix
 # Qwen Code Configs
 .qwen/
 logs/
+
+# 🔐 SECURITY: API Key Testing Files - NEVER COMMIT!
+test-config.json
+test-results/
+api-keys.json
+keys.json
+provider-keys.json

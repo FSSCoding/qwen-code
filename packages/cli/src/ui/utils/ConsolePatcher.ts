@@ -55,10 +55,8 @@ export class ConsolePatcher {
           this.originalConsoleError(this.formatArgs(args));
         }
       } else {
-        if (this.params.debugMode) {
-          originalMethod.apply(console, args);
-        }
-
+        // Only send to React component for display, don't double-output to console
+        // The React component will handle the display
         if (type !== 'debug' || this.params.debugMode) {
           this.params.onNewMessage?.({
             type,

@@ -21,6 +21,7 @@ import { DEFAULT_DIFF_OPTIONS } from './diffOptions.js';
 import { tildeifyPath } from '../utils/paths.js';
 import { ModifiableDeclarativeTool, ModifyContext } from './modifiable-tool.js';
 import { SchemaValidator } from '../utils/schemaValidator.js';
+import { debugLog } from '../utils/debugLog.js';
 
 const memoryToolSchemaData: FunctionDeclaration = {
   name: 'save_memory',
@@ -367,7 +368,7 @@ Project: ${projectPath} (current project only)`;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.error(
+      debugLog(
         `[MemoryTool] Error executing save_memory for fact "${fact}" in ${scope}: ${errorMessage}`,
       );
       return {
@@ -476,7 +477,7 @@ export class MemoryTool
       }
       await fsAdapter.writeFile(memoryFilePath, content, 'utf-8');
     } catch (error) {
-      console.error(
+      debugLog(
         `[MemoryTool] Error adding memory entry to ${memoryFilePath}:`,
         error,
       );

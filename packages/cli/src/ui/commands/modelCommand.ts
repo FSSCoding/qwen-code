@@ -24,7 +24,7 @@ export const modelCommand: SlashCommand = {
         // Just "/model" - show interactive selection
         return {
           type: 'tool',
-          toolName: 'model_switcher_ecosystem',
+          toolName: 'model_manager',
           toolArgs: { action: 'list' }
         };
       }
@@ -47,7 +47,7 @@ export const modelCommand: SlashCommand = {
           const [nickname, model, baseUrl] = params;
           return {
             type: 'tool',
-            toolName: 'model_switcher_ecosystem',
+            toolName: 'model_manager',
             toolArgs: { 
               action: 'add', 
               nickname, 
@@ -73,7 +73,7 @@ export const modelCommand: SlashCommand = {
           
           return {
             type: 'tool',
-            toolName: 'model_switcher_ecosystem',
+            toolName: 'model_manager',
             toolArgs: { action: 'remove', nickname: params[0] }
           };
         }
@@ -82,7 +82,7 @@ export const modelCommand: SlashCommand = {
         case 'ls': {
           return {
             type: 'tool',
-            toolName: 'model_switcher_ecosystem',
+            toolName: 'model_manager',
             toolArgs: { action: 'list' }
           };
         }
@@ -90,7 +90,7 @@ export const modelCommand: SlashCommand = {
         case 'current': {
           return {
             type: 'tool',
-            toolName: 'model_switcher_ecosystem',
+            toolName: 'model_manager',
             toolArgs: { action: 'current' }
           };
         }
@@ -98,17 +98,17 @@ export const modelCommand: SlashCommand = {
         case 'init': {
           return {
             type: 'tool',
-            toolName: 'model_switcher_ecosystem',
+            toolName: 'model_manager',
             toolArgs: { action: 'init' }
           };
         }
         
         default: {
           // Assume it's a nickname for direct switching
-          if (action.length <= 5 && /^[a-zA-Z0-9]+$/.test(action)) {
+          if (action.length <= 6 && /^[a-zA-Z0-9]+$/.test(action)) {
             return {
               type: 'tool',
-              toolName: 'model_switcher_ecosystem',
+              toolName: 'model_manager',
               toolArgs: { nickname: action }
             };
           }
@@ -126,7 +126,7 @@ export const modelCommand: SlashCommand = {
                     '  /model list              - List all saved models\n' +
                     '  /model current           - Show current model\n\n' +
                     'Start with `/model init` to auto-detect your current setup!\n' +
-                    'Nicknames must be 1-5 alphanumeric characters.'
+                    'Nicknames must be 1-6 alphanumeric characters.'
           };
         }
       }
